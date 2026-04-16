@@ -26,6 +26,7 @@ const DEFAULT_SAVE: SaveData = {
     musicVolume: 0.7,
     sfxVolume: 0.8,
     gameSpeed: 1,
+    autoStartWaves: false,
   },
 };
 
@@ -66,7 +67,17 @@ export class SaveManager {
     if (!merged.unlockLevels || typeof merged.unlockLevels !== 'object') {
       merged.unlockLevels = {};
     }
+    // Ensure new settings keys default sanely for old saves
+    if (typeof merged.settings.autoStartWaves !== 'boolean') {
+      merged.settings.autoStartWaves = false;
+    }
     return merged;
+  }
+
+  /** Patch a subset of settings and persist. */
+  updateSettings(patch: Partial<SaveData['settings']>): void {
+    this.data.settings = { ...this.data.settings, ...patch };
+    this.save();
   }
 
   getData(): SaveData {

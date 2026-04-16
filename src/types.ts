@@ -230,6 +230,7 @@ export interface GameSettings {
   musicVolume: number;
   sfxVolume: number;
   gameSpeed: number;
+  autoStartWaves: boolean;
 }
 
 // ============ EVENT TYPES ============

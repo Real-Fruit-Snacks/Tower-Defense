@@ -13,12 +13,16 @@ export class HudScene extends Phaser.Scene {
   private startWaveBtn!: Phaser.GameObjects.Text;
   private speedText!: Phaser.GameObjects.Text;
   private speedBg!: Phaser.GameObjects.Graphics;
+  private autoText!: Phaser.GameObjects.Text;
+  private autoBg!: Phaser.GameObjects.Graphics;
   private separatorLine!: Phaser.GameObjects.Graphics;
   private wavePreview!: WavePreview;
   private startWavePulse?: Phaser.Tweens.Tween;
   private currentSpeed = 1;
+  private autoStartEnabled = false;
   private onStartWave?: () => void;
   private onSetSpeed?: (speed: number) => void;
+  private onToggleAutoStart?: (enabled: boolean) => void;
   private initialTotalWaves = 0;
 
   constructor() {
@@ -33,10 +37,14 @@ export class HudScene extends Phaser.Scene {
     totalWaves: number;
     onStartWave: () => void;
     onSetSpeed: (speed: number) => void;
+    onToggleAutoStart?: (enabled: boolean) => void;
+    autoStart?: boolean;
   }): void {
     this.gameEvents = data.events;
     this.onStartWave = data.onStartWave;
     this.onSetSpeed = data.onSetSpeed;
+    this.onToggleAutoStart = data.onToggleAutoStart;
+    this.autoStartEnabled = data.autoStart ?? false;
     this.initialTotalWaves = data.totalWaves;
   }
 
@@ -130,6 +138,25 @@ export class HudScene extends Phaser.Scene {
     });
     this.speedText.on('pointerover', () => this.speedText.setScale(1.1));
     this.speedText.on('pointerout', () => this.speedText.setScale(1));
+
+    // AUTO toggle pill — sits just left of the speed pill
+    this.autoBg = this.add.graphics();
+    this.drawAutoPill();
+
+    this.autoText = this.add.text(GAME.WIDTH - 107, 15, 'AUTO', {
+      fontFamily: UI.FONT_MONO,
+      fontSize: 11,
+      color: this.autoStartEnabled ? '#4ade80' : '#6a6a80',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true }).setLetterSpacing(1);
+
+    this.autoText.on('pointerdown', () => {
+      this.autoStartEnabled = !this.autoStartEnabled;
+      this.refreshAutoVisual();
+      this.onToggleAutoStart?.(this.autoStartEnabled);
+    });
+    this.autoText.on('pointerover', () => this.autoText.setScale(1.1));
+    this.autoText.on('pointerout', () => this.autoText.setScale(1));
 
     // Subscribe to events
     this.gameEvents.on('GOLD_CHANGED', ({ gold, delta }) => {
@@ -233,6 +260,30 @@ export class HudScene extends Phaser.Scene {
     this.speedBg.fillRoundedRect(GAME.WIDTH - 72, 12, 40, 24, 6);
     this.speedBg.lineStyle(1, COLORS.ACCENT_CYAN, intensity + 0.15);
     this.speedBg.strokeRoundedRect(GAME.WIDTH - 72, 12, 40, 24, 6);
+  }
+
+  private drawAutoPill(): void {
+    this.autoBg.clear();
+    // Green tint when on, dim cyan outline when off.
+    const color = this.autoStartEnabled ? COLORS.SUCCESS : COLORS.ACCENT_CYAN;
+    const fillAlpha = this.autoStartEnabled ? 0.18 : 0.06;
+    const strokeAlpha = this.autoStartEnabled ? 0.7 : 0.2;
+    this.autoBg.fillStyle(color, fillAlpha);
+    this.autoBg.fillRoundedRect(GAME.WIDTH - 134, 12, 54, 24, 6);
+    this.autoBg.lineStyle(1, color, strokeAlpha);
+    this.autoBg.strokeRoundedRect(GAME.WIDTH - 134, 12, 54, 24, 6);
+  }
+
+  private refreshAutoVisual(): void {
+    this.drawAutoPill();
+    this.autoText.setColor(this.autoStartEnabled ? '#4ade80' : '#6a6a80');
+  }
+
+  /** Called by GameScene so external logic (e.g. pause) can sync UI. */
+  setAutoStart(enabled: boolean): void {
+    if (this.autoStartEnabled === enabled) return;
+    this.autoStartEnabled = enabled;
+    this.refreshAutoVisual();
   }
 
   updateWaveDisplay(current: number, total: number): void {

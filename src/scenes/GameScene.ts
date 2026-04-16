@@ -57,6 +57,9 @@ export class GameScene extends Phaser.Scene {
   private upgradesAllowed = true;
   private endlessMode = false;
   private endlessRng?: SeededRNG;
+  private autoStartWaves = false;
+  private autoStartTimer?: Phaser.Time.TimerEvent;
+  private gameOverTriggered = false;
 
   constructor() {
     super(SCENES.GAME);
@@ -73,6 +76,9 @@ export class GameScene extends Phaser.Scene {
     this.upgradesAllowed = true;
     this.endlessMode = data.mode === 'endless';
     this.endlessRng = undefined;
+    this.gameOverTriggered = false;
+    this.paused = false;
+    this.autoStartTimer = undefined;
 
     // Read accumulated passive bonuses from the unlock tree. These are
     // additive/multiplicative perks the player earned across runs.
@@ -220,6 +226,9 @@ export class GameScene extends Phaser.Scene {
     }
     this.gridRenderer.drawPath(this.pathfinding.getPath());
 
+    // Read auto-start preference from persisted settings
+    this.autoStartWaves = persistentForBonuses?.saveManager.getData().settings.autoStartWaves ?? false;
+
     // UI overlays
     this.scene.launch(SCENES.HUD, {
       events: this.gameEvents,
@@ -229,6 +238,16 @@ export class GameScene extends Phaser.Scene {
       totalWaves: this.endlessMode ? Infinity : waves.length,
       onStartWave: () => this.startWave(),
       onSetSpeed: (speed: number) => this.setGameSpeed(speed),
+      onToggleAutoStart: (enabled: boolean) => {
+        this.autoStartWaves = enabled;
+        persistentForBonuses?.saveManager.updateSettings({ autoStartWaves: enabled });
+        // If turning off mid-countdown, cancel the pending start.
+        if (!enabled && this.autoStartTimer) {
+          this.autoStartTimer.remove(false);
+          this.autoStartTimer = undefined;
+        }
+      },
+      autoStart: this.autoStartWaves,
     });
 
     // Filter towers by unlocks
@@ -394,7 +413,26 @@ export class GameScene extends Phaser.Scene {
       // Check victory
       if (this.waveManager.isAllWavesComplete()) {
         this.handleGameOver(true);
+        return;
       }
+
+      // Schedule auto-start of the next wave if the toggle is on.
+      if (this.autoStartWaves) {
+        this.autoStartTimer?.remove(false);
+        this.autoStartTimer = this.time.delayedCall(GAME.AUTO_START_DELAY, () => {
+          this.autoStartTimer = undefined;
+          // Re-check the flag in case the player toggled off during the countdown.
+          if (this.autoStartWaves && this.waveManager.getState() === 'idle') {
+            this.startWave();
+          }
+        });
+      }
+    });
+
+    // Any WAVE_START cancels a pending auto-start (player clicked manually).
+    this.gameEvents.on('WAVE_START', () => {
+      this.autoStartTimer?.remove(false);
+      this.autoStartTimer = undefined;
     });
 
     // Pause on ESC
@@ -616,6 +654,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleGameOver(victory: boolean): void {
+    // Idempotent guard — prevents multi-leak bursts or stacked events from
+    // triggering the transition twice (which would stop scenes repeatedly
+    // and schedule multiple GAME_OVER starts).
+    if (this.gameOverTriggered) return;
+    this.gameOverTriggered = true;
+
+    // Freeze the game loop so enemies can't keep moving/leaking and towers
+    // can't keep firing during the 500ms transition.
+    this.paused = true;
+
+    // Cancel any pending auto-start timer so it doesn't fire mid-transition.
+    this.autoStartTimer?.remove(false);
+    this.autoStartTimer = undefined;
+
     const stats = this.runManager.getStats(victory);
 
     // Stop overlay scenes

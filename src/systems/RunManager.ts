@@ -29,8 +29,18 @@ export class RunManager {
   }
 
   takeDamage(amount: number): void {
+    // Once the run is over, ignore further hits. Prevents rapid multi-leak
+    // bursts from re-emitting GAME_STATE_CHANGED (which would spawn multiple
+    // GameOver scenes) and keeps HP_CHANGED numbers accurate.
+    if (this.gameState === 'gameover') return;
+    if (amount <= 0) return;
+
+    const before = this.hp;
     this.hp = Math.max(0, this.hp - amount);
-    this.events.emit('HP_CHANGED', { hp: this.hp, delta: -amount });
+    const actual = before - this.hp;
+    if (actual <= 0) return; // already at 0 — don't flash the screen red for nothing
+
+    this.events.emit('HP_CHANGED', { hp: this.hp, delta: -actual });
 
     if (this.hp <= 0) {
       this.gameState = 'gameover';
