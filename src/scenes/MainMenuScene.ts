@@ -263,10 +263,18 @@ export class MainMenuScene extends Phaser.Scene {
         desc: 'spend shards on permanent boosts',
         onClick: () => this.transitionTo(SCENES.UNLOCK_TREE_SCENE),
       },
+      {
+        label: 'SETTINGS',
+        color: COLORS.WIND,
+        shape: 'hexagon',
+        desc: 'audio · data · info',
+        onClick: () => this.transitionTo(SCENES.SETTINGS),
+      },
     ];
 
-    const baseY = 340;
-    const spacing = 72;
+    // 5 buttons now; tighten spacing so they still fit above the stats footer.
+    const baseY = 318;
+    const spacing = 62;
 
     entries.forEach((entry, i) => {
       const btn = this.createMenuButton(

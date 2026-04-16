@@ -85,4 +85,5 @@ export const SCENES = {
   TOWER_BAR: 'TowerBarScene',
   UNLOCK_TREE_SCENE: 'UnlockTreeScene',
   CHALLENGE_SELECT: 'ChallengeSelectScene',
+  SETTINGS: 'SettingsScene',
 } as const;

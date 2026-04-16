@@ -11,7 +11,9 @@ import { HudScene } from './ui/HudScene';
 import { TowerBarScene } from './ui/TowerBarScene';
 import { UnlockTreeScene } from './scenes/UnlockTreeScene';
 import { ChallengeSelectScene } from './scenes/ChallengeSelectScene';
+import { SettingsScene } from './scenes/SettingsScene';
 import { PersistentState } from './roguelite/PersistentState';
+import { audioManager } from './systems/AudioManager';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -43,6 +45,7 @@ const config: Phaser.Types.Core.GameConfig = {
     TowerBarScene,
     UnlockTreeScene,
     ChallengeSelectScene,
+    SettingsScene,
   ],
 };
 
@@ -51,3 +54,9 @@ const game = new Phaser.Game(config);
 // Initialize persistent state and store on registry for all scenes to access
 const persistentState = new PersistentState();
 game.registry.set('persistentState', persistentState);
+
+// Sync audio manager with saved volume preferences so the user's choices
+// take effect immediately on page load, before they visit Settings.
+const savedSettings = persistentState.saveManager.getData().settings;
+audioManager.setMasterVolume(savedSettings.musicVolume ?? 0.7);
+audioManager.setSfxVolume(savedSettings.sfxVolume ?? 0.8);
