@@ -131,8 +131,10 @@ export class WorldMapScene extends Phaser.Scene {
     // Back button
     this.createBackButton();
 
-    // Flash on entry
-    this.cameras.main.flash(300, 0, 255, 255, false, undefined, 0.1);
+    // Flash on entry. Kept short so it doesn't block a node-click flash
+    // if the player taps immediately — any in-flight entry flash is also
+    // reset inside triggerNodeEntry() as a belt-and-suspenders guard.
+    this.cameras.main.flash(180, 0, 255, 255, true, undefined, 0.08);
   }
 
   // ============ Background ============
@@ -599,9 +601,17 @@ export class WorldMapScene extends Phaser.Scene {
 
   /**
    * Central node-entry dispatcher. Shared by regular and boss nodes.
-   * Runs click feedback (camera flash + squish tween) and schedules the
-   * actual scene transition via a time event, with an idempotent guard
-   * so double-taps on mobile can't fire `enterNode` twice.
+   *
+   * Notes on the `force: true` on every flash here:
+   *   Phaser's Camera.flash silently ignores follow-up calls while a
+   *   previous flash is still running, UNLESS `force` is true. The
+   *   scene's entry flash (cyan, 300ms) would otherwise swallow the
+   *   click feedback, so the player sees no response to their tap and
+   *   tries again — hitting the idempotent guard and thinking nothing
+   *   happened. Forcing the flash guarantees visible click feedback.
+   *
+   * The transition itself is scheduled on the scene clock so it fires
+   * independently of any tween lifecycle or Phaser internal state.
    */
   private triggerNodeEntry(
     node: NodeMapNode,
@@ -612,28 +622,28 @@ export class WorldMapScene extends Phaser.Scene {
     if (this.nodeEntryTriggered) return;
     this.nodeEntryTriggered = true;
 
+    // Cancel any in-progress camera fx so our click feedback always wins.
+    this.cameras.main.resetFX();
+
     const r = (color >> 16) & 0xff;
     const g = (color >> 8) & 0xff;
     const b = color & 0xff;
     if (isBoss) {
-      this.cameras.main.flash(250, 255, 180, 0, false, undefined, 0.25);
-      this.cameras.main.shake(250, 0.008);
+      this.cameras.main.flash(200, 255, 180, 0, true, undefined, 0.25);
+      this.cameras.main.shake(200, 0.008);
     } else {
-      this.cameras.main.flash(120, r, g, b, false, undefined, 0.15);
+      this.cameras.main.flash(110, r, g, b, true, undefined, 0.2);
     }
 
-    // Feedback tween is purely visual — no navigation callback.
     this.tweens.add({
       targets: container,
       scaleX: isBoss ? 0.88 : 0.9,
       scaleY: isBoss ? 0.88 : 0.9,
-      duration: isBoss ? 100 : 80,
+      duration: isBoss ? 90 : 70,
       yoyo: true,
     });
 
-    // Schedule the navigation via the scene clock — always fires even if
-    // the feedback tween is interrupted by the entrance animation tween.
-    this.time.delayedCall(isBoss ? 220 : 140, () => this.enterNode(node));
+    this.time.delayedCall(isBoss ? 160 : 110, () => this.enterNode(node));
   }
 
   // ============ Start Node (dedicated treatment) ============
