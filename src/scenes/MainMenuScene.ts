@@ -61,6 +61,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.createButtons();
     this.createStatsFooter();
     this.createVersionTag();
+    this.createFullscreenButton();
 
     // Opening camera flash for dramatic intro
     this.cameras.main.flash(500, 0, 255, 255, false, undefined, 0.15);
@@ -519,6 +520,93 @@ export class MainMenuScene extends Phaser.Scene {
     }).setOrigin(1, 1).setDepth(10);
     v.setAlpha(0);
     this.tweens.add({ targets: v, alpha: 1, duration: 500, delay: 1400 });
+  }
+
+  /**
+   * Floating fullscreen toggle in the top-right corner. Mobile players
+   * tap this to get the game canvas to fill the screen — otherwise the
+   * browser's address bar / home indicator can clip the edges.
+   */
+  private createFullscreenButton(): void {
+    // Some browsers (iOS Safari on iPhone) don't expose the Fullscreen API.
+    // Hide the button entirely rather than showing a dead control.
+    if (!this.scale.fullscreen.available) return;
+
+    const x = GAME.WIDTH - 30;
+    const y = 30;
+    const r = 18;
+
+    const container = this.add.container(x, y).setDepth(12);
+
+    const bg = this.add.graphics();
+    const iconGfx = this.add.graphics();
+    iconGfx.setBlendMode(Phaser.BlendModes.ADD);
+
+    const draw = () => {
+      const active = this.scale.isFullscreen;
+      const color = active ? COLORS.SUCCESS : COLORS.ACCENT_CYAN;
+
+      bg.clear();
+      bg.fillStyle(color, active ? 0.18 : 0.06);
+      bg.fillCircle(0, 0, r);
+      bg.lineStyle(1, color, active ? 0.7 : 0.25);
+      bg.strokeCircle(0, 0, r);
+
+      iconGfx.clear();
+      iconGfx.lineStyle(1.5, color, 1);
+      const bracketR = 7;
+      const armLen = 4;
+      const sign = active ? -1 : 1;
+      // 4 corner brackets: outward when OFF, inward when ON.
+      const cx = 0, cy = 0;
+      // Top-left
+      iconGfx.lineBetween(cx - bracketR, cy - bracketR, cx - bracketR + sign * armLen, cy - bracketR);
+      iconGfx.lineBetween(cx - bracketR, cy - bracketR, cx - bracketR, cy - bracketR + sign * armLen);
+      // Top-right
+      iconGfx.lineBetween(cx + bracketR, cy - bracketR, cx + bracketR - sign * armLen, cy - bracketR);
+      iconGfx.lineBetween(cx + bracketR, cy - bracketR, cx + bracketR, cy - bracketR + sign * armLen);
+      // Bottom-left
+      iconGfx.lineBetween(cx - bracketR, cy + bracketR, cx - bracketR + sign * armLen, cy + bracketR);
+      iconGfx.lineBetween(cx - bracketR, cy + bracketR, cx - bracketR, cy + bracketR - sign * armLen);
+      // Bottom-right
+      iconGfx.lineBetween(cx + bracketR, cy + bracketR, cx + bracketR - sign * armLen, cy + bracketR);
+      iconGfx.lineBetween(cx + bracketR, cy + bracketR, cx + bracketR, cy + bracketR - sign * armLen);
+    };
+    draw();
+
+    container.add(bg);
+    container.add(iconGfx);
+
+    const hitArea = new Phaser.Geom.Circle(0, 0, r + 4);
+    container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
+
+    container.on('pointerover', () => {
+      this.input.setDefaultCursor('pointer');
+      this.tweens.add({ targets: container, scaleX: 1.1, scaleY: 1.1, duration: 120 });
+    });
+    container.on('pointerout', () => {
+      this.input.setDefaultCursor('default');
+      this.tweens.add({ targets: container, scaleX: 1, scaleY: 1, duration: 120 });
+    });
+    container.on('pointerdown', () => {
+      if (this.scale.isFullscreen) this.scale.stopFullscreen();
+      else this.scale.startFullscreen();
+      this.time.delayedCall(50, draw);
+    });
+
+    this.scale.on('enterfullscreen', draw);
+    this.scale.on('leavefullscreen', draw);
+
+    // Remove the listeners when this scene shuts down so we don't invoke
+    // `draw` on a destroyed graphics object after the player navigates away.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('enterfullscreen', draw);
+      this.scale.off('leavefullscreen', draw);
+    });
+
+    // Fade in after other UI
+    container.setAlpha(0);
+    this.tweens.add({ targets: container, alpha: 1, duration: 500, delay: 1200 });
   }
 
   // ============ Update Loop ============

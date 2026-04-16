@@ -15,6 +15,9 @@ export class HudScene extends Phaser.Scene {
   private speedBg!: Phaser.GameObjects.Graphics;
   private autoText!: Phaser.GameObjects.Text;
   private autoBg!: Phaser.GameObjects.Graphics;
+  private fsBg!: Phaser.GameObjects.Graphics;
+  private fsIconGfx!: Phaser.GameObjects.Graphics;
+  private fsHitZone!: Phaser.GameObjects.Zone;
   private separatorLine!: Phaser.GameObjects.Graphics;
   private wavePreview!: WavePreview;
   private startWavePulse?: Phaser.Tweens.Tween;
@@ -139,6 +142,40 @@ export class HudScene extends Phaser.Scene {
     this.speedText.on('pointerover', () => this.speedText.setScale(1.1));
     this.speedText.on('pointerout', () => this.speedText.setScale(1));
 
+    // Fullscreen toggle pill — leftmost of the right-side controls.
+    // Skip entirely on browsers without Fullscreen API support.
+    const fsAvailable = this.scale.fullscreen.available;
+    this.fsBg = this.add.graphics();
+    this.fsIconGfx = this.add.graphics();
+    this.fsIconGfx.setBlendMode(Phaser.BlendModes.ADD);
+    if (fsAvailable) this.drawFsPill();
+
+    // Zone for interactivity (Graphics can't receive pointer events directly)
+    this.fsHitZone = this.add.zone(GAME.WIDTH - 159, 24, 34, 24)
+      .setOrigin(0.5, 0.5);
+    if (fsAvailable) this.fsHitZone.setInteractive({ useHandCursor: true });
+
+    this.fsHitZone.on('pointerdown', () => {
+      if (this.scale.isFullscreen) {
+        this.scale.stopFullscreen();
+      } else {
+        this.scale.startFullscreen();
+      }
+      // Redraw on next frame after state settles
+      this.time.delayedCall(50, () => this.drawFsPill());
+    });
+    this.fsHitZone.on('pointerover', () => this.fsIconGfx.setScale(1.1));
+    this.fsHitZone.on('pointerout', () => this.fsIconGfx.setScale(1));
+
+    // Sync pill visuals when fullscreen state changes externally (e.g. ESC key).
+    const onFsChange = (): void => this.drawFsPill();
+    this.scale.on('enterfullscreen', onFsChange);
+    this.scale.on('leavefullscreen', onFsChange);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('enterfullscreen', onFsChange);
+      this.scale.off('leavefullscreen', onFsChange);
+    });
+
     // AUTO toggle pill — sits just left of the speed pill
     this.autoBg = this.add.graphics();
     this.drawAutoPill();
@@ -260,6 +297,50 @@ export class HudScene extends Phaser.Scene {
     this.speedBg.fillRoundedRect(GAME.WIDTH - 72, 12, 40, 24, 6);
     this.speedBg.lineStyle(1, COLORS.ACCENT_CYAN, intensity + 0.15);
     this.speedBg.strokeRoundedRect(GAME.WIDTH - 72, 12, 40, 24, 6);
+  }
+
+  private drawFsPill(): void {
+    const x = GAME.WIDTH - 176; // pill left edge
+    const y = 12;
+    const w = 34;
+    const h = 24;
+    const active = this.scale.isFullscreen;
+    const color = active ? COLORS.SUCCESS : COLORS.ACCENT_CYAN;
+    const fillAlpha = active ? 0.18 : 0.06;
+    const strokeAlpha = active ? 0.7 : 0.2;
+
+    this.fsBg.clear();
+    this.fsBg.fillStyle(color, fillAlpha);
+    this.fsBg.fillRoundedRect(x, y, w, h, 6);
+    this.fsBg.lineStyle(1, color, strokeAlpha);
+    this.fsBg.strokeRoundedRect(x, y, w, h, 6);
+
+    // Icon: 4 corner brackets (classic fullscreen glyph) or 4 inward
+    // arrows when already fullscreen.
+    this.fsIconGfx.clear();
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const r = 6;        // bracket outer distance from center
+    const l = 3;        // bracket arm length
+    const strokeW = 1.5;
+    const iconColor = active ? COLORS.SUCCESS : COLORS.ACCENT_CYAN;
+    this.fsIconGfx.lineStyle(strokeW, iconColor, 1);
+
+    // For "enter fullscreen" the brackets sit at the OUTSIDE; for
+    // "exit fullscreen" they sit at the INSIDE (collapse arrows).
+    const sign = active ? -1 : 1;
+    // Top-left bracket
+    this.fsIconGfx.lineBetween(cx - r, cy - r, cx - r + sign * l, cy - r);
+    this.fsIconGfx.lineBetween(cx - r, cy - r, cx - r, cy - r + sign * l);
+    // Top-right bracket
+    this.fsIconGfx.lineBetween(cx + r, cy - r, cx + r - sign * l, cy - r);
+    this.fsIconGfx.lineBetween(cx + r, cy - r, cx + r, cy - r + sign * l);
+    // Bottom-left bracket
+    this.fsIconGfx.lineBetween(cx - r, cy + r, cx - r + sign * l, cy + r);
+    this.fsIconGfx.lineBetween(cx - r, cy + r, cx - r, cy + r - sign * l);
+    // Bottom-right bracket
+    this.fsIconGfx.lineBetween(cx + r, cy + r, cx + r - sign * l, cy + r);
+    this.fsIconGfx.lineBetween(cx + r, cy + r, cx + r, cy + r - sign * l);
   }
 
   private drawAutoPill(): void {
