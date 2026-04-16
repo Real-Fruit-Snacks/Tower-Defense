@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SCENES, COLORS, GAME } from '../constants';
 import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
+import { setupStageCamera } from '../utils/StageCamera';
 import type { PersistentState } from '../roguelite/PersistentState';
 
 interface ShopItem {
@@ -19,6 +20,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   create(): void {
+    setupStageCamera(this);
     this.cameras.main.setBackgroundColor(COLORS.BG);
     this.persistent = this.game.registry.get('persistentState') as PersistentState;
 

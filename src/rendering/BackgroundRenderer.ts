@@ -30,6 +30,10 @@ interface FloatingShape {
  * Fills the entire viewport with atmospheric vignette + floating neon
  * shapes + subtle scanlines. Resize-aware: redraws on `scale.resize` so
  * the game looks full-screen at any aspect ratio.
+ *
+ * Optionally accepts a target Layer; every graphics object it creates is
+ * added to that layer so GameScene can route background-only content to
+ * a dedicated camera.
  */
 export class BackgroundRenderer {
   private scene: Phaser.Scene;
@@ -38,12 +42,14 @@ export class BackgroundRenderer {
   private shapes: FloatingShape[] = [];
   private allTweens: Phaser.Tweens.Tween[] = [];
   private resizeHandler: () => void;
+  private targetLayer?: Phaser.GameObjects.Layer;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, targetLayer?: Phaser.GameObjects.Layer) {
     this.scene = scene;
+    this.targetLayer = targetLayer;
 
-    this.vignette = this.scene.add.graphics().setDepth(-2);
-    this.scanlines = this.scene.add.graphics().setDepth(-0.5);
+    this.vignette = this.addTo(this.scene.add.graphics().setDepth(-2));
+    this.scanlines = this.addTo(this.scene.add.graphics().setDepth(-0.5));
     this.drawVignette();
     this.drawScanlines();
 
@@ -88,6 +94,15 @@ export class BackgroundRenderer {
     }
   }
 
+  /**
+   * Routes a scene-root GameObject into our target layer (if one was
+   * provided). Returns the object for chaining.
+   */
+  private addTo<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    if (this.targetLayer) this.targetLayer.add(obj);
+    return obj;
+  }
+
   private createFloatingShapes(): void {
     for (let i = 0; i < 8; i++) {
       const kind = SHAPE_KINDS[Math.floor(Math.random() * SHAPE_KINDS.length)] ?? 'circle';
@@ -98,7 +113,7 @@ export class BackgroundRenderer {
       const x = randomRange(0, this.viewW);
       const y = randomRange(0, this.viewH);
 
-      const g = this.scene.add.graphics();
+      const g = this.addTo(this.scene.add.graphics());
       g.setDepth(-1);
       g.setPosition(x, y);
       g.setBlendMode(Phaser.BlendModes.ADD);

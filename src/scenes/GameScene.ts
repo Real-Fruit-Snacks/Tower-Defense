@@ -61,6 +61,18 @@ export class GameScene extends Phaser.Scene {
   private autoStartTimer?: Phaser.Time.TimerEvent;
   private gameOverTriggered = false;
 
+  // --- RESIZE / multi-camera layout ---
+  // Atmospheric background renders full-viewport via `bgCam`.
+  // Gameplay renders via the default main camera, zoomed + centered on
+  // the 1280×720 design space.
+  // `overlayCam` sits on top for pause / fullscreen overlays.
+  private bgLayer!: Phaser.GameObjects.Layer;
+  private gameLayer!: Phaser.GameObjects.Layer;
+  private overlayLayer!: Phaser.GameObjects.Layer;
+  private bgCam!: Phaser.Cameras.Scene2D.Camera;
+  private overlayCam!: Phaser.Cameras.Scene2D.Camera;
+  private resizeHandler?: () => void;
+
   constructor() {
     super(SCENES.GAME);
   }
@@ -79,6 +91,9 @@ export class GameScene extends Phaser.Scene {
     this.gameOverTriggered = false;
     this.paused = false;
     this.autoStartTimer = undefined;
+
+    // --- Layer + camera setup (must come before any other game objects) ---
+    this.setupLayersAndCameras();
 
     // Read accumulated passive bonuses from the unlock tree. These are
     // additive/multiplicative perks the player earned across runs.
@@ -176,8 +191,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Atmospheric background
-    new BackgroundRenderer(this);
+    // Atmospheric background renders via the bg camera across the full
+    // viewport. All its graphics go into `bgLayer` which `bgCam` owns.
+    new BackgroundRenderer(this, this.bgLayer);
 
     // Core systems
     this.gridManager = new GridManager(levelConfig);
@@ -454,25 +470,32 @@ export class GameScene extends Phaser.Scene {
     this.scene.pause(SCENES.HUD);
     this.scene.pause(SCENES.TOWER_BAR);
 
-    const overlay = this.add.container(0, 0).setDepth(100);
+    // The pause UI is drawn by `overlayCam` which covers the full viewport
+    // so the dim + buttons extend past the centered gameplay region.
+    const vw = this.scale.width;
+    const vh = this.scale.height;
+    const container = this.add.container(0, 0);
+    this.overlayLayer.add(container);
 
-    // Dim background
+    // Full-screen dim
     const bg = this.add.graphics();
     bg.fillStyle(0x000000, 0.7);
-    bg.fillRect(0, 0, GAME.WIDTH, GAME.HEIGHT);
-    overlay.add(bg);
+    bg.fillRect(0, 0, vw, vh);
+    container.add(bg);
 
-    // Title
-    const title = this.add.text(GAME.WIDTH / 2, 250, 'PAUSED', {
+    // Centered text column
+    const cx = vw / 2;
+    const cy = vh / 2;
+
+    const title = this.add.text(cx, cy - 110, 'PAUSED', {
       fontFamily: 'Segoe UI, system-ui, sans-serif',
       fontSize: 36,
       color: '#00ffff',
       fontStyle: 'bold',
     }).setOrigin(0.5);
-    overlay.add(title);
+    container.add(title);
 
-    // Resume button
-    const resume = this.add.text(GAME.WIDTH / 2, 340, 'RESUME', {
+    const resume = this.add.text(cx, cy - 20, 'RESUME', {
       fontFamily: 'Segoe UI, system-ui, sans-serif',
       fontSize: 20,
       color: '#4ade80',
@@ -482,10 +505,9 @@ export class GameScene extends Phaser.Scene {
     resume.on('pointerdown', () => this.resumeGame());
     resume.on('pointerover', () => resume.setAlpha(0.7));
     resume.on('pointerout', () => resume.setAlpha(1));
-    overlay.add(resume);
+    container.add(resume);
 
-    // Restart button
-    const restart = this.add.text(GAME.WIDTH / 2, 400, 'RESTART', {
+    const restart = this.add.text(cx, cy + 40, 'RESTART', {
       fontFamily: 'Segoe UI, system-ui, sans-serif',
       fontSize: 20,
       color: '#ffaa00',
@@ -500,10 +522,9 @@ export class GameScene extends Phaser.Scene {
     });
     restart.on('pointerover', () => restart.setAlpha(0.7));
     restart.on('pointerout', () => restart.setAlpha(1));
-    overlay.add(restart);
+    container.add(restart);
 
-    // Quit button
-    const quit = this.add.text(GAME.WIDTH / 2, 460, 'QUIT TO MENU', {
+    const quit = this.add.text(cx, cy + 100, 'QUIT TO MENU', {
       fontFamily: 'Segoe UI, system-ui, sans-serif',
       fontSize: 20,
       color: '#f87171',
@@ -516,9 +537,9 @@ export class GameScene extends Phaser.Scene {
     });
     quit.on('pointerover', () => quit.setAlpha(0.7));
     quit.on('pointerout', () => quit.setAlpha(1));
-    overlay.add(quit);
+    container.add(quit);
 
-    this.pauseOverlay = overlay;
+    this.pauseOverlay = container;
   }
 
   private resumeGame(): void {
@@ -538,6 +559,100 @@ export class GameScene extends Phaser.Scene {
     this.waveManager.update(time, scaledDelta);
     this.enemyManager.update(time, scaledDelta);
     this.towerManager.update(time, scaledDelta, this.enemyManager.getActiveEnemies());
+  }
+
+  /**
+   * Create three layers (bg / game / overlay) and three cameras so the
+   * gameplay renders at a zoomed+centered viewport while the background
+   * fills the full screen and overlays sit on top.
+   *
+   * Render order (cameras render in insertion index order):
+   *   1. bgCam       — full viewport, shows `bgLayer`
+   *   2. mainCam     — zoomed + centered, shows `gameLayer`
+   *   3. overlayCam  — full viewport, shows `overlayLayer`
+   *
+   * New GameObjects added via `scene.add.*` are auto-routed to
+   * `gameLayer` so the bg/overlay cameras never see gameplay content.
+   * BackgroundRenderer is given `bgLayer` explicitly; pause UI is added
+   * to `overlayLayer` explicitly.
+   */
+  private setupLayersAndCameras(): void {
+    this.bgLayer = this.add.layer().setDepth(-100);
+    this.gameLayer = this.add.layer().setDepth(0);
+    this.overlayLayer = this.add.layer().setDepth(1000);
+
+    // Route any future scene-root addition into gameLayer. BackgroundRenderer
+    // and pause UI bypass this by calling layer.add() manually before their
+    // objects hit the scene root.
+    const onAddedToScene = (obj: Phaser.GameObjects.GameObject): void => {
+      // Layers are themselves GameObjects but we never want to re-parent them.
+      const asAny = obj as unknown as Phaser.GameObjects.Layer;
+      if (asAny === this.bgLayer || asAny === this.gameLayer || asAny === this.overlayLayer) return;
+      // Skip objects that already have a parent (a Layer's .add already ran).
+      if (obj.parentContainer) return;
+      const go = obj as unknown as { displayList?: unknown };
+      if (go.displayList !== this.children) return;
+      this.gameLayer.add(obj);
+    };
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedToScene);
+
+    // bgCam: full viewport, bg-only.
+    this.bgCam = this.cameras.add(0, 0, this.scale.width, this.scale.height, false, 'bg');
+    this.bgCam.ignore([this.gameLayer, this.overlayLayer]);
+
+    // overlayCam: full viewport, overlay-only (pause UI, fullscreen fade).
+    this.overlayCam = this.cameras.add(0, 0, this.scale.width, this.scale.height, false, 'overlay');
+    this.overlayCam.ignore([this.bgLayer, this.gameLayer]);
+
+    // Main cam = gameplay. Zooms + centers the 1280×720 design space.
+    this.cameras.main.setName('gameplay');
+    this.cameras.main.setOrigin(0, 0);
+    this.cameras.main.ignore([this.bgLayer, this.overlayLayer]);
+
+    // Re-order cameras so bgCam renders first (beneath gameplay), then
+    // mainCam (gameplay), then overlayCam (on top). `cameras.cameras` is
+    // the render-order list.
+    const list = this.cameras.cameras;
+    const desired = [this.bgCam, this.cameras.main, this.overlayCam];
+    list.length = 0;
+    list.push(...desired);
+
+    // Compute viewport / zoom for the initial window size.
+    this.layout();
+
+    // Resize listener — recompute every camera viewport on window resize
+    // or orientation change.
+    this.resizeHandler = (): void => this.layout();
+    this.scale.on('resize', this.resizeHandler);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.resizeHandler) this.scale.off('resize', this.resizeHandler);
+      this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedToScene);
+    });
+  }
+
+  /**
+   * Size/position the three cameras against the current viewport.
+   * - bgCam + overlayCam: full viewport
+   * - mainCam: 1280×720 design space scaled to fit inside the viewport
+   *   (preserving aspect), centered.
+   */
+  private layout(): void {
+    const vw = this.scale.width;
+    const vh = this.scale.height;
+
+    // Scale gameplay to fit the viewport while preserving the 16:9 aspect.
+    const scale = Math.min(vw / GAME.WIDTH, vh / GAME.HEIGHT);
+    const renderedW = GAME.WIDTH * scale;
+    const renderedH = GAME.HEIGHT * scale;
+    const offsetX = (vw - renderedW) / 2;
+    const offsetY = (vh - renderedH) / 2;
+
+    this.cameras.main.setViewport(offsetX, offsetY, renderedW, renderedH);
+    this.cameras.main.setZoom(scale);
+    this.cameras.main.setScroll(0, 0);
+
+    this.bgCam.setViewport(0, 0, vw, vh);
+    this.overlayCam.setViewport(0, 0, vw, vh);
   }
 
   /**

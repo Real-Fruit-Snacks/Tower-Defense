@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { setupStageCamera } from '../utils/StageCamera';
 import { SCENES, COLORS, GAME } from '../constants';
 import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
 import { ShapeRenderer } from '../rendering/ShapeRenderer';
@@ -91,6 +92,7 @@ export class WorldMapScene extends Phaser.Scene {
   }
 
   create(): void {
+    setupStageCamera(this);
     this.cameras.main.setBackgroundColor(COLORS.BG);
     this.bgParticles = [];
     this.nodeVisuals.clear();

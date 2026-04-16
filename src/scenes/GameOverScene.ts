@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SCENES, COLORS, GAME } from '../constants';
 import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
+import { setupStageCamera } from '../utils/StageCamera';
 import type { PersistentState } from '../roguelite/PersistentState';
 
 interface GameOverData {
@@ -17,6 +18,7 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   create(data: GameOverData): void {
+    setupStageCamera(this);
     this.cameras.main.setBackgroundColor(COLORS.BG);
 
     // Persist run data

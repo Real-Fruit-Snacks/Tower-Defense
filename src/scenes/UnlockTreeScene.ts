@@ -3,6 +3,7 @@ import { SCENES, COLORS, GAME } from '../constants';
 import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
 import { ShapeRenderer } from '../rendering/ShapeRenderer';
 import { PersistentState } from '../roguelite/PersistentState';
+import { setupStageCamera } from '../utils/StageCamera';
 import { UNLOCK_TREE } from '../data/unlockTree';
 import type { UnlockNode, UnlockEffect } from '../types';
 import { randomRange } from '../utils/MathUtils';
@@ -114,6 +115,7 @@ export class UnlockTreeScene extends Phaser.Scene {
   }
 
   create(): void {
+    setupStageCamera(this);
     this.persistentState = this.game.registry.get('persistentState') as PersistentState;
     this.cameras.main.setBackgroundColor(COLORS.BG);
 

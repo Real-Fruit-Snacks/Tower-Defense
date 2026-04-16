@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME, COLORS } from './constants';
+import { COLORS } from './constants';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
@@ -15,18 +15,20 @@ import { PersistentState } from './roguelite/PersistentState';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  // Fixed design resolution, FIT-scaled to the viewport. This is the
-  // standard approach for fixed-aspect (16:9) browser games — gameplay
-  // stays pixel-perfect across devices and the letterbox bars are
-  // painted the game's background color via `backgroundColor` below +
-  // the matching CSS `html/body { background }` in index.html, so they
-  // blend into the atmosphere rather than looking like black voids.
-  width: GAME.WIDTH,
-  height: GAME.HEIGHT,
+  // RESIZE mode: canvas matches the actual viewport pixel-for-pixel.
+  // Each scene handles its own layout:
+  //   - Menu scenes use `this.scale.width/height` for centering.
+  //   - GameScene uses a two-camera setup (bg cam spans full viewport,
+  //     gameplay cam is zoomed + centered on the 1280×720 design space).
+  //   - HUD/TowerBar render full-bleed bars with anchored content.
+  // The initial width/height are overwritten immediately by the scale
+  // manager based on the parent container size.
+  width: window.innerWidth,
+  height: window.innerHeight,
   parent: 'game-container',
   backgroundColor: '#' + COLORS.BG.toString(16).padStart(6, '0'),
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   scene: [

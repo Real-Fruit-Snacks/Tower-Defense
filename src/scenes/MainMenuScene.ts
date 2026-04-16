@@ -3,6 +3,7 @@ import { SCENES, COLORS, GAME } from '../constants';
 import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
 import { ShapeRenderer } from '../rendering/ShapeRenderer';
 import { randomRange } from '../utils/MathUtils';
+import { setupStageCamera } from '../utils/StageCamera';
 import type { PersistentState } from '../roguelite/PersistentState';
 
 interface FloatingShape {
@@ -47,6 +48,7 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    setupStageCamera(this);
     this.cameras.main.setBackgroundColor(COLORS.BG);
     this.shapes = [];
     this.buttons = [];

@@ -4,6 +4,7 @@ import { createGlowText, drawNeonRect } from '../rendering/NeonEffects';
 import { CHALLENGES } from '../data/challenges';
 import type { ChallengeConfig } from '../types';
 import { randomRange } from '../utils/MathUtils';
+import { setupStageCamera } from '../utils/StageCamera';
 
 interface BgParticle {
   gfx: Phaser.GameObjects.Graphics;
@@ -41,6 +42,7 @@ export class ChallengeSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    setupStageCamera(this);
     this.cameras.main.setBackgroundColor(COLORS.BG);
     this.bgParticles = [];
     this.scrollOffset = 0;
