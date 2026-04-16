@@ -25,6 +25,9 @@ export class HudScene extends Phaser.Scene {
   private fsBg!: Phaser.GameObjects.Graphics;
   private fsIconGfx!: Phaser.GameObjects.Graphics;
   private fsHitZone!: Phaser.GameObjects.Zone;
+  private pauseBg!: Phaser.GameObjects.Graphics;
+  private pauseIconGfx!: Phaser.GameObjects.Graphics;
+  private pauseHitZone!: Phaser.GameObjects.Zone;
   // Background + separator (full-bleed)
   private hudBg!: Phaser.GameObjects.Graphics;
   private separatorLine!: Phaser.GameObjects.Graphics;
@@ -34,6 +37,7 @@ export class HudScene extends Phaser.Scene {
   private onStartWave?: () => void;
   private onSetSpeed?: (speed: number) => void;
   private onToggleAutoStart?: (enabled: boolean) => void;
+  private onTogglePause?: () => void;
   private initialTotalWaves = 0;
   private resizeHandler!: () => void;
 
@@ -50,12 +54,14 @@ export class HudScene extends Phaser.Scene {
     onStartWave: () => void;
     onSetSpeed: (speed: number) => void;
     onToggleAutoStart?: (enabled: boolean) => void;
+    onTogglePause?: () => void;
     autoStart?: boolean;
   }): void {
     this.gameEvents = data.events;
     this.onStartWave = data.onStartWave;
     this.onSetSpeed = data.onSetSpeed;
     this.onToggleAutoStart = data.onToggleAutoStart;
+    this.onTogglePause = data.onTogglePause;
     this.autoStartEnabled = data.autoStart ?? false;
     this.initialTotalWaves = data.totalWaves;
   }
@@ -116,7 +122,20 @@ export class HudScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    // --- RIGHT: fullscreen + AUTO + SPEED (anchored to right edge) ---
+    // --- RIGHT: pause + fullscreen + AUTO + SPEED (anchored to right edge) ---
+    // Pause pill — primary mobile escape route since there's no ESC key
+    // on touch devices. Opens the same pause overlay (Resume / Restart
+    // / Quit to Menu) that desktop gets via keyboard.
+    this.pauseBg = this.add.graphics();
+    this.pauseIconGfx = this.add.graphics();
+    this.pauseIconGfx.setBlendMode(Phaser.BlendModes.ADD);
+    this.pauseHitZone = this.add.zone(0, 24, 34, 24)
+      .setOrigin(0.5, 0.5)
+      .setInteractive({ useHandCursor: true });
+    this.pauseHitZone.on('pointerdown', () => this.onTogglePause?.());
+    this.pauseHitZone.on('pointerover', () => this.pauseIconGfx.setScale(1.1));
+    this.pauseHitZone.on('pointerout', () => this.pauseIconGfx.setScale(1));
+
     const fsAvailable = this.scale.fullscreen.available;
     this.fsBg = this.add.graphics();
     this.fsIconGfx = this.add.graphics();
@@ -262,6 +281,11 @@ export class HudScene extends Phaser.Scene {
     const fsBgX = vw - 176;
     this.drawFsPill(fsBgX);
     this.fsHitZone.setPosition(fsBgX + 17, 24);
+
+    // Pause pill: left of fullscreen (leftmost of right-side controls)
+    const pauseBgX = vw - 218;
+    this.drawPausePill(pauseBgX);
+    this.pauseHitZone.setPosition(pauseBgX + 17, 24);
   }
 
   update(time: number, _delta: number): void {
@@ -361,6 +385,32 @@ export class HudScene extends Phaser.Scene {
     this.fsIconGfx.lineBetween(cx - r, cy + r, cx - r, cy + r - sign * l);
     this.fsIconGfx.lineBetween(cx + r, cy + r, cx + r - sign * l, cy + r);
     this.fsIconGfx.lineBetween(cx + r, cy + r, cx + r, cy + r - sign * l);
+  }
+
+  private drawPausePill(bgX?: number): void {
+    const x = bgX ?? this.scale.width - 218;
+    const y = 12;
+    const w = 34;
+    const h = 24;
+    // Neutral cyan pill so it doesn't compete with colored state pills.
+    const color = COLORS.ACCENT_CYAN;
+
+    this.pauseBg.clear();
+    this.pauseBg.fillStyle(color, 0.06);
+    this.pauseBg.fillRoundedRect(x, y, w, h, 6);
+    this.pauseBg.lineStyle(1, color, 0.2);
+    this.pauseBg.strokeRoundedRect(x, y, w, h, 6);
+
+    // Icon: two vertical bars (classic pause glyph)
+    this.pauseIconGfx.clear();
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const barW = 3;
+    const barH = 10;
+    const gap = 3;
+    this.pauseIconGfx.fillStyle(color, 1);
+    this.pauseIconGfx.fillRect(cx - gap - barW, cy - barH / 2, barW, barH);
+    this.pauseIconGfx.fillRect(cx + gap, cy - barH / 2, barW, barH);
   }
 
   private refreshAutoVisual(): void {

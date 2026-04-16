@@ -263,6 +263,10 @@ export class GameScene extends Phaser.Scene {
           this.autoStartTimer = undefined;
         }
       },
+      // Mobile-accessible pause — there is no ESC key on touch devices,
+      // so the HUD pause pill is the only way to open the Resume /
+      // Restart / Quit overlay on phones and tablets.
+      onTogglePause: () => this.togglePause(),
       autoStart: this.autoStartWaves,
     });
 
