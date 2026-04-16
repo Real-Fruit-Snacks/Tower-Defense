@@ -331,20 +331,28 @@ export class GridRenderer {
   }
 
   private drawEntryGate(x: number, y: number, pulse: number): void {
+    // `x` is the LEFT edge of the entry cell. The gate sits entirely
+    // outside the grid, to the left of that edge. We first compute the
+    // gate's geometric CENTER (cx, cy) and place everything — halo,
+    // panel, rivets, chevron — around that single point so nothing
+    // drifts out of alignment.
     const g = this.portalGraphics;
-    const color = 0x4ade80; // green
+    const color = 0x4ade80;
 
-    // Soft halo
-    g.fillStyle(color, 0.06 + pulse * 0.02);
-    g.fillCircle(x + 2, y, 22);
-    g.fillStyle(color, 0.1);
-    g.fillCircle(x + 2, y, 14);
-
-    // Gate panel — rounded rect extending left of the grid cell
     const w = 22;
     const h = 28;
-    const gx = x - w + 2;
+    // Gate's right edge sits 2px clear of the grid cell.
+    const gx = x - w - 2;
     const gy = y - h / 2;
+    const cx = gx + w / 2;
+    const cy = y;
+
+    // Soft halo centered on the gate
+    g.fillStyle(color, 0.06 + pulse * 0.02);
+    g.fillCircle(cx, cy, 22);
+    g.fillStyle(color, 0.1);
+    g.fillCircle(cx, cy, 14);
+
     // Dark panel
     g.fillStyle(0x0a1810, 0.85);
     g.fillRoundedRect(gx, gy, w, h, 3);
@@ -355,44 +363,49 @@ export class GridRenderer {
     g.lineStyle(0.5, color, 0.25);
     g.strokeRoundedRect(gx + 2, gy + 2, w - 4, h - 4, 2);
 
-    // Corner rivets (small dots)
+    // Corner rivets
     g.fillStyle(color, 0.8);
     g.fillCircle(gx + 3, gy + 3, 1);
     g.fillCircle(gx + w - 3, gy + 3, 1);
     g.fillCircle(gx + 3, gy + h - 3, 1);
     g.fillCircle(gx + w - 3, gy + h - 3, 1);
 
-    // Inner "containment" diagonal lines
+    // Inner containment bars
     g.lineStyle(0.5, color, 0.2);
     g.lineBetween(gx + 4, gy + 6, gx + w - 4, gy + 6);
     g.lineBetween(gx + 4, gy + h - 6, gx + w - 4, gy + h - 6);
 
-    // Forward chevron, slightly brighter (points toward the path, i.e. right)
-    const cx = x - 4;
+    // Forward chevrons — a bright tip just past the gate's right edge,
+    // with a faded twin behind, suggesting enemies about to emerge.
+    const tipX = gx + w + 3;
     g.fillStyle(color, 0.95);
-    g.fillTriangle(cx + 5, y, cx - 2, y - 4, cx - 2, y + 4);
-    // Stacked fainter chevrons behind, suggest motion
+    g.fillTriangle(tipX + 4, cy, tipX - 3, cy - 4, tipX - 3, cy + 4);
     g.fillStyle(color, 0.4);
-    g.fillTriangle(cx - 1, y, cx - 8, y - 4, cx - 8, y + 4);
+    g.fillTriangle(tipX - 2, cy, tipX - 9, cy - 4, tipX - 9, cy + 4);
   }
 
   private drawExitCore(x: number, y: number, pulse: number): void {
+    // `x` is the RIGHT edge of the exit cell. The core sits outside the
+    // grid, to the right. Compute geometric center first, align
+    // everything to it.
     const g = this.portalGraphics;
-    const color = COLORS.DANGER; // red
+    const color = COLORS.DANGER;
+
+    const rOuter = 13;
+    const cx = x + rOuter + 2; // core's center 2px clear of the cell edge
+    const cy = y;
 
     // Soft warning halo
     g.fillStyle(color, 0.06 + pulse * 0.02);
-    g.fillCircle(x - 2, y, 24);
+    g.fillCircle(cx, cy, 24);
     g.fillStyle(color, 0.1);
-    g.fillCircle(x - 2, y, 15);
+    g.fillCircle(cx, cy, 15);
 
     // Outer hexagon
-    const rOuter = 13;
-    const cxOuter = x - 2;
     const hexOuter: Phaser.Geom.Point[] = [];
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI / 3) * i;
-      hexOuter.push(new Phaser.Geom.Point(cxOuter + Math.cos(a) * rOuter, y + Math.sin(a) * rOuter));
+      hexOuter.push(new Phaser.Geom.Point(cx + Math.cos(a) * rOuter, cy + Math.sin(a) * rOuter));
     }
     g.fillStyle(0x18080c, 0.85);
     g.fillPoints(hexOuter, true);
@@ -404,25 +417,25 @@ export class GridRenderer {
     const hexInner: Phaser.Geom.Point[] = [];
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI / 3) * i;
-      hexInner.push(new Phaser.Geom.Point(cxOuter + Math.cos(a) * rInner, y + Math.sin(a) * rInner));
+      hexInner.push(new Phaser.Geom.Point(cx + Math.cos(a) * rInner, cy + Math.sin(a) * rInner));
     }
     g.lineStyle(1, color, 0.6);
     g.strokePoints(hexInner, true);
 
-    // Crosshair ticks — short segments at cardinal directions on outer hex
+    // Crosshair ticks
     const tickLen = 5;
     g.lineStyle(1.5, color, 0.85);
-    g.lineBetween(cxOuter, y - rOuter - 1, cxOuter, y - rOuter - 1 - tickLen);
-    g.lineBetween(cxOuter, y + rOuter + 1, cxOuter, y + rOuter + 1 + tickLen);
-    g.lineBetween(cxOuter - rOuter - 1, y, cxOuter - rOuter - 1 - tickLen, y);
-    g.lineBetween(cxOuter + rOuter + 1, y, cxOuter + rOuter + 1 + tickLen, y);
+    g.lineBetween(cx, cy - rOuter - 1, cx, cy - rOuter - 1 - tickLen);
+    g.lineBetween(cx, cy + rOuter + 1, cx, cy + rOuter + 1 + tickLen);
+    g.lineBetween(cx - rOuter - 1, cy, cx - rOuter - 1 - tickLen, cy);
+    g.lineBetween(cx + rOuter + 1, cy, cx + rOuter + 1 + tickLen, cy);
 
-    // Central marker — small red diamond on a dark bead
+    // Central red diamond
     g.fillStyle(0x000000, 0.6);
-    g.fillCircle(cxOuter, y, 3);
+    g.fillCircle(cx, cy, 3);
     g.fillStyle(color, 0.95);
-    g.fillTriangle(cxOuter, y - 3, cxOuter + 3, y, cxOuter, y + 3);
-    g.fillTriangle(cxOuter, y - 3, cxOuter - 3, y, cxOuter, y + 3);
+    g.fillTriangle(cx, cy - 3, cx + 3, cy, cx, cy + 3);
+    g.fillTriangle(cx, cy - 3, cx - 3, cy, cx, cy + 3);
   }
 
   private drawAnimatedPath(): void {
