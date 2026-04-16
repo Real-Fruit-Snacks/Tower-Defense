@@ -67,6 +67,8 @@ export class WorldMapScene extends Phaser.Scene {
   private nodes: NodeMapNode[] = [];
   private currentNodeId = 'start';
   private campaignState!: CampaignState;
+  /** Idempotent guard so rapid taps only ever trigger one enterNode. */
+  private nodeEntryTriggered = false;
   private bgParticles: BgParticle[] = [];
 
   // Graphics layers
@@ -98,6 +100,7 @@ export class WorldMapScene extends Phaser.Scene {
     this.nodeVisuals.clear();
     this.scanLineY = 0;
     this.flowOffset = 0;
+    this.nodeEntryTriggered = false;
 
     // Initialize campaign state
     const persistent = this.game.registry.get('persistentState') as PersistentState | undefined;
@@ -583,17 +586,54 @@ export class WorldMapScene extends Phaser.Scene {
       });
 
       hitZone.on('pointerdown', () => {
-        // Click feedback: scale pulse + camera flash
-        this.cameras.main.flash(120, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff, false, undefined, 0.15);
-        this.tweens.add({
-          targets: container, scaleX: 0.9, scaleY: 0.9,
-          duration: 80, yoyo: true,
-          onComplete: () => this.enterNode(node),
-        });
+        // Click feedback is decoupled from navigation. Navigation fires
+        // via a time event so it doesn't depend on the feedback tween's
+        // onComplete (which was unreliable during the entrance animation
+        // that competes for the same scaleX/scaleY properties).
+        this.triggerNodeEntry(node, container, color);
       });
     }
 
     this.nodeVisuals.set(node.id, { container, outerGlow, pulseRing, size, color, state });
+  }
+
+  /**
+   * Central node-entry dispatcher. Shared by regular and boss nodes.
+   * Runs click feedback (camera flash + squish tween) and schedules the
+   * actual scene transition via a time event, with an idempotent guard
+   * so double-taps on mobile can't fire `enterNode` twice.
+   */
+  private triggerNodeEntry(
+    node: NodeMapNode,
+    container: Phaser.GameObjects.Container,
+    color: number,
+    isBoss = false,
+  ): void {
+    if (this.nodeEntryTriggered) return;
+    this.nodeEntryTriggered = true;
+
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    if (isBoss) {
+      this.cameras.main.flash(250, 255, 180, 0, false, undefined, 0.25);
+      this.cameras.main.shake(250, 0.008);
+    } else {
+      this.cameras.main.flash(120, r, g, b, false, undefined, 0.15);
+    }
+
+    // Feedback tween is purely visual — no navigation callback.
+    this.tweens.add({
+      targets: container,
+      scaleX: isBoss ? 0.88 : 0.9,
+      scaleY: isBoss ? 0.88 : 0.9,
+      duration: isBoss ? 100 : 80,
+      yoyo: true,
+    });
+
+    // Schedule the navigation via the scene clock — always fires even if
+    // the feedback tween is interrupted by the entrance animation tween.
+    this.time.delayedCall(isBoss ? 220 : 140, () => this.enterNode(node));
   }
 
   // ============ Start Node (dedicated treatment) ============
@@ -887,13 +927,7 @@ export class WorldMapScene extends Phaser.Scene {
       });
 
       hitZone.on('pointerdown', () => {
-        this.cameras.main.flash(250, 255, 180, 0, false, undefined, 0.25);
-        this.cameras.main.shake(250, 0.008);
-        this.tweens.add({
-          targets: container, scaleX: 0.88, scaleY: 0.88,
-          duration: 100, yoyo: true,
-          onComplete: () => this.enterNode(node),
-        });
+        this.triggerNodeEntry(node, container, worldColor, true);
       });
     }
 
@@ -987,15 +1021,17 @@ export class WorldMapScene extends Phaser.Scene {
       for (const node of nodesInLayer) {
         const visual = this.nodeVisuals.get(node.id);
         if (!visual) continue;
+        // Keep containers at full scale so hit areas stay tappable from
+        // frame one — otherwise rapid taps on mobile land on a 0.3-scale
+        // zone or miss entirely. Only the alpha is animated for the
+        // entrance. The click feedback tween handles any size feedback.
         visual.container.setAlpha(0);
-        visual.container.setScale(0.3);
         this.tweens.add({
           targets: visual.container,
           alpha: 1,
-          scaleX: 1, scaleY: 1,
-          duration: 400,
-          delay: 100 + layerIdx * 80,
-          ease: 'Back.easeOut',
+          duration: 350,
+          delay: 100 + layerIdx * 60,
+          ease: 'Quad.easeOut',
         });
       }
       layerIdx++;
