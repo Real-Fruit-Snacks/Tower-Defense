@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tower Defense — Design Round 3</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #08080f;
+    color: #e0e0e0;
+    overflow-x: hidden;
+  }
+  header {
+    background: linear-gradient(135deg, #0a0015 0%, #150025 50%, #0a0020 100%);
+    padding: 36px 20px;
+    text-align: center;
+    border-bottom: 2px solid #ff0055;
+  }
+  header h1 { font-size: 2.1rem; color: #fff; margin-bottom: 6px; }
+  header p { color: #a0a0b0; font-size: 0.95rem; }
+  header .locked {
+    margin-top: 12px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  }
+  header .locked span {
+    background: #1a0a2e; border: 1px solid #ff005533; padding: 3px 10px;
+    border-radius: 20px; font-size: 0.7rem; color: #ff0055;
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 100; background: #0a0a12;
+    border-bottom: 1px solid #1a1a2a; padding: 0 20px; display: flex; overflow-x: auto;
+  }
+  nav a {
+    color: #555; text-decoration: none; padding: 13px 18px; font-size: 0.85rem;
+    font-weight: 600; white-space: nowrap; border-bottom: 3px solid transparent; transition: all 0.2s;
+  }
+  nav a:hover, nav a.active { color: #ff0055; border-bottom-color: #ff0055; }
+
+  .section {
+    max-width: 1400px; margin: 0 auto; padding: 50px 20px; border-bottom: 1px solid #1a1a2a;
+  }
+  .section h2 { font-size: 1.7rem; color: #fff; margin-bottom: 6px; }
+  .section .subtitle { color: #888; font-size: 0.95rem; margin-bottom: 35px; }
+
+  .options-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;
+  }
+  .options-grid.wide { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+
+  .option-card {
+    background: #0e0e18; border: 2px solid #1e1e2e; border-radius: 12px;
+    overflow: hidden; transition: all 0.3s; cursor: pointer;
+  }
+  .option-card:hover { border-color: #ff0055; transform: translateY(-3px); box-shadow: 0 6px 25px rgba(255,0,85,0.1); }
+  .option-card.selected { border-color: #ff0055; box-shadow: 0 0 0 1px #ff0055, 0 6px 25px rgba(255,0,85,0.15); }
+  .option-card.selected .card-header::after {
+    content: '✓ SELECTED'; position: absolute; top: 10px; right: 10px;
+    background: #ff0055; color: #fff; padding: 3px 8px; border-radius: 4px;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 1px;
+  }
+
+  .card-header { position: relative; padding: 4px; }
+  .card-header h3 {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(0,0,0,0.75); padding: 5px 12px; border-radius: 6px;
+    font-size: 1rem; color: #fff; backdrop-filter: blur(4px);
+  }
+  .card-canvas { width: 100%; height: 220px; display: block; border-radius: 8px; }
+  .card-canvas.tall { height: 300px; }
+
+  .card-body { padding: 16px; }
+  .card-body .desc { color: #a0a0b0; font-size: 0.85rem; line-height: 1.6; margin-bottom: 14px; }
+
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pros, .cons { font-size: 0.8rem; line-height: 1.7; }
+  .pros h4 { color: #4ade80; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 1px; }
+  .cons h4 { color: #f87171; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 1px; }
+  .pros li, .cons li { list-style: none; padding-left: 14px; position: relative; color: #999; }
+  .pros li::before { content: '+'; position: absolute; left: 0; color: #4ade80; font-weight: 700; }
+  .cons li::before { content: '−'; position: absolute; left: 0; color: #f87171; font-weight: 700; }
+
+  #summary {
+    position: fixed; bottom: 0; left: 0; right: 0; background: #0e0e1e;
+    border-top: 2px solid #ff0055; padding: 14px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    z-index: 200; transform: translateY(100%); transition: transform 0.3s;
+  }
+  #summary.visible { transform: translateY(0); }
+  #summary .choices { display: flex; gap: 14px; flex-wrap: wrap; }
+  #summary .choice-tag { background: #1a1a2e; padding: 5px 12px; border-radius: 6px; font-size: 0.78rem; }
+  #summary .choice-tag span { color: #ff0055; font-weight: 600; }
+  #summary button {
+    background: #ff0055; color: #fff; border: none; padding: 10px 28px; border-radius: 8px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  #summary button:disabled { background: #334; color: #666; cursor: not-allowed; }
+
+  /* Audio player styles */
+  .audio-bars {
+    display: flex; align-items: flex-end; gap: 2px; height: 40px;
+  }
+  .audio-bars .bar {
+    width: 4px; background: currentColor; border-radius: 2px;
+    animation: pulse 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from { transform: scaleY(0.3); } to { transform: scaleY(1); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Design Decisions — Round 3</h1>
+  <p>Final details: elements, towers, campaign structure, and audio</p>
+  <div class="locked">
+    <span>Vector 2D</span><span>Cyberpunk Neon</span><span>Abstract/Geometric</span>
+    <span>Maze Building</span><span>Roguelite + Unlock Tree</span><span>12-15 Towers</span>
+    <span>Branching Upgrades</span><span>Color = Resistance</span><span>Simple Gold</span>
+    <span>Bottom Bar UI</span><span>Phaser 3 + TS</span>
+  </div>
+</header>
+
+<nav id="nav">
+  <a href="#damage-types" class="active">Damage Types</a>
+  <a href="#tower-roster">Tower Roster</a>
+  <a href="#campaign">Campaign Structure</a>
+  <a href="#audio">Audio Direction</a>
+</nav>
+
+<!-- ==================== DAMAGE TYPES ==================== -->
+<div class="section" id="damage-types">
+  <h2>1. Damage Type / Element System</h2>
+  <p class="subtitle">How many elements exist? This defines the tower↔enemy counter matrix and visual language.</p>
+  <div class="options-grid" data-group="damageTypes">
+
+    <div class="option-card" data-value="3elem">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-3elem"></canvas>
+        <h3>3 Elements (Rock-Paper-Scissors)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Three elements in a cycle: Thermal beats Kinetic, Kinetic beats Electric, Electric beats Thermal. Clean triangle. Plus Physical (neutral).</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Instantly learnable — just 3 matchups</li>
+            <li>Perfect strategic triangle</li>
+            <li>3 colors + neutral = clean visual language</li>
+            <li>Easiest to balance</li>
+            <li>Works well with 12-15 towers (4-5 per element)</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less depth per matchup</li>
+            <li>Can feel simplistic for hardcore players</li>
+            <li>Limited color variety on enemies</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="4elem">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-4elem"></canvas>
+        <h3>4 Elements (Dual Pairs)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Two opposing pairs: Fire↔Ice and Lightning↔Poison. Each is strong vs its opposite. Plus Physical (neutral). Classic RPG model.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Familiar to RPG/game players</li>
+            <li>4 distinct colors = good variety</li>
+            <li>Pairs are intuitive (fire melts ice, etc)</li>
+            <li>Room for combo effects (fire+poison = explosion)</li>
+            <li>Sweet spot of depth vs complexity</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Slightly harder to learn than 3</li>
+            <li>Need ~3 towers per element to fill roster</li>
+            <li>Pairs can feel disconnected from each other</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="6elem">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-6elem"></canvas>
+        <h3>6 Elements (Full Wheel)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Six elements in a wheel: Fire > Wind > Earth > Lightning > Water > Fire. Each strong vs next, weak vs previous. Maximum depth.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum strategic depth</li>
+            <li>Rich color palette for enemies</li>
+            <li>Every wave feels different</li>
+            <li>Lots of combo potential</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Hard to memorize all matchups</li>
+            <li>Only ~2 towers per element with 12 roster</li>
+            <li>Most complex to balance</li>
+            <li>Can overwhelm new players</li>
+            <li>6 colors on dark bg gets noisy</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TOWER ROSTER ==================== -->
+<div class="section" id="tower-roster">
+  <h2>2. Tower Roster Concept</h2>
+  <p class="subtitle">The specific tower lineup — roles, archetypes, and how they fill the roster. Click to select a roster approach.</p>
+  <div class="options-grid wide" data-group="rosterStyle">
+
+    <div class="option-card" data-value="role-based">
+      <div class="card-header">
+        <canvas class="card-canvas tall" id="cv-roster-role"></canvas>
+        <h3>Role-Based Roster (12 towers)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Towers organized by role: 4 DPS, 3 Control, 2 Support, 2 Economy, 1 Ultimate. Each role has distinct visual shape language. Clear team-building.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Clear roles — players know what to build</li>
+            <li>Every tower has a purpose</li>
+            <li>Easy to balance (buff roles, not individuals)</li>
+            <li>Natural "team comp" discussions</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Roles can feel restrictive</li>
+            <li>Some roles may be "must pick"</li>
+            <li>Less room for weird/niche towers</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="element-spread">
+      <div class="card-header">
+        <canvas class="card-canvas tall" id="cv-roster-elem"></canvas>
+        <h3>Element-Spread Roster (12 towers)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Towers organized by element first: 3 per element (assuming 4 elements). Each element has a DPS, an AoE, and a utility variant. Element mastery matters.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Strong element identity</li>
+            <li>Natural counter-play with enemy colors</li>
+            <li>Element combos and synergies</li>
+            <li>Branching upgrades feel distinct per element</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Same-element towers may feel similar</li>
+            <li>Forces element choice early in run</li>
+            <li>Less role diversity</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="hybrid-roster">
+      <div class="card-header">
+        <canvas class="card-canvas tall" id="cv-roster-hybrid"></canvas>
+        <h3>Hybrid Roster (14 towers)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Mix of both: 8 elemental towers (2 per element, each a different role) + 4 neutral utility towers (slow, buff, economy, ultimate). Best of both.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum build diversity</li>
+            <li>Element AND role identity</li>
+            <li>Neutral towers ensure utility in any build</li>
+            <li>14 towers is the sweet spot</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Most towers to create and balance</li>
+            <li>Players may ignore neutral towers</li>
+            <li>Complex unlock tree needed</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== CAMPAIGN STRUCTURE ==================== -->
+<div class="section" id="campaign">
+  <h2>3. Campaign Structure</h2>
+  <p class="subtitle">How the campaign is organized — worlds, maps, and progression flow.</p>
+  <div class="options-grid" data-group="campaign">
+
+    <div class="option-card" data-value="linear-worlds">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-camp-linear"></canvas>
+        <h3>Linear Worlds (4 × 5)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">4 themed worlds, each with 5 maps + a boss map. Play in order. Each world introduces a new element and enemy type. Clear 20-map campaign.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Clean progression arc</li>
+            <li>Each world = tutorial for one element</li>
+            <li>Easy to pace difficulty</li>
+            <li>20 maps is a solid campaign length</li>
+            <li>Boss fights as milestones</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>No player choice in order</li>
+            <li>Can feel like a grind if stuck</li>
+            <li>Replayability depends on star system</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="branching-map">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-camp-branch"></canvas>
+        <h3>Branching World Map</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">A branching map like Slay the Spire or FTL. Choose your path through nodes — some are battles, some are shops, some are elite/boss encounters.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Player agency in route choice</li>
+            <li>Natural roguelite fit (different each run)</li>
+            <li>Risk/reward paths (hard = better rewards)</li>
+            <li>Shops/events break up combat</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>More complex map generation</li>
+            <li>Harder to control difficulty curve</li>
+            <li>Some paths may be clearly better</li>
+            <li>No "world" theme identity</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="world-plus-branch">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-camp-hybrid"></canvas>
+        <h3>Worlds + Branching Paths</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">4 themed worlds with a branching node map inside each. Beat any path through a world to unlock the next. Combines structure with choice.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>World themes give identity</li>
+            <li>Branching adds replayability within each world</li>
+            <li>Player choice without losing structure</li>
+            <li>Can replay worlds with different paths</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Most content to design</li>
+            <li>Two layers of map UI needed</li>
+            <li>Balance across paths within a world</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== AUDIO ==================== -->
+<div class="section" id="audio">
+  <h2>4. Audio Direction</h2>
+  <p class="subtitle">The soundscape — music style, SFX approach, and overall audio identity.</p>
+  <div class="options-grid" data-group="audio">
+
+    <div class="option-card" data-value="synthwave-ost">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-audio-synth"></canvas>
+        <h3>Synthwave / Retrowave</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Pulsing synth basslines, arpeggiated melodies, retro drum machines. Think Hotline Miami, Furi, or Carpenter Brut. High energy, driving rhythm.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Perfect match for cyberpunk neon visuals</li>
+            <li>High energy keeps gameplay exciting</li>
+            <li>Very popular / trendy audio style</li>
+            <li>Great for boss fight escalation</li>
+            <li>Lots of royalty-free options available</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Can get repetitive in long sessions</li>
+            <li>Loud/busy mix may compete with SFX</li>
+            <li>Oversaturated in indie game market</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="ambient-electronic">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-audio-ambient"></canvas>
+        <h3>Ambient Electronic</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Atmospheric pads, subtle beats, evolving textures. Think FTL, Into the Breach, or Stellaris. Calm but tense. Builds with wave intensity.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Non-fatiguing for long sessions</li>
+            <li>SFX stand out clearly over ambient</li>
+            <li>Can dynamically shift with gameplay</li>
+            <li>Sophisticated, premium feel</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less immediately exciting</li>
+            <li>Boss fights may lack punch</li>
+            <li>Can feel too calm for action</li>
+            <li>Harder to make memorable</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="dnb-electronic">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-audio-dnb"></canvas>
+        <h3>DnB / Aggressive Electronic</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Fast breakbeats, heavy bass, glitchy textures. Think Geometry Wars, Beat Hazard, or Thumper. Maximum intensity. Matches abstract geometric theme.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Matches geometric/abstract perfectly</li>
+            <li>Incredible energy for action</li>
+            <li>Unique for tower defense genre</li>
+            <li>Great for "flow state" gameplay</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Very niche taste — polarizing</li>
+            <li>Exhausting for casual players</li>
+            <li>Loudness competes with game SFX</li>
+            <li>Not everyone's cup of tea</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="adaptive-layers">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-audio-adaptive"></canvas>
+        <h3>Adaptive Layered (Dynamic)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Music that changes based on game state. Calm ambient during build phase → adds beats during waves → full intensity during boss/late waves. All electronic.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Most immersive — music matches action</li>
+            <li>Never too loud or too quiet</li>
+            <li>Build phase feels calm, waves feel tense</li>
+            <li>Professional AAA technique</li>
+            <li>Best of all other options combined</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Most complex to implement</li>
+            <li>Need multiple layers per track</li>
+            <li>Crossfading / syncing is tricky</li>
+            <li>More audio assets needed</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="summary">
+  <div class="choices" id="choices-display"></div>
+  <button id="confirm-btn" disabled>Select all 4 to finalize</button>
+</div>
+
+<script>
+// ============ SELECTION LOGIC ============
+const selections = {};
+const groupLabels = { damageTypes:'Elements', rosterStyle:'Roster', campaign:'Campaign', audio:'Audio' };
+
+document.querySelectorAll('.option-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const group = card.closest('[data-group]').dataset.group;
+    card.closest('.options-grid').querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selections[group] = { value: card.dataset.value, label: card.querySelector('h3').textContent };
+    updateSummary();
+  });
+});
+
+function updateSummary() {
+  const summary = document.getElementById('summary');
+  const display = document.getElementById('choices-display');
+  const btn = document.getElementById('confirm-btn');
+  display.innerHTML = '';
+  for (const [g, {label}] of Object.entries(selections)) {
+    display.innerHTML += `<div class="choice-tag"><span>${groupLabels[g]}:</span> ${label}</div>`;
+  }
+  const count = Object.keys(selections).length;
+  if (count > 0) summary.classList.add('visible');
+  btn.disabled = count < 4;
+  btn.textContent = count < 4 ? `${count}/4 selected` : 'Finalize All Decisions ✓';
+}
+
+// ============ CANVAS HELPERS ============
+function getCtx(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  c.width = c.offsetWidth * 2;
+  c.height = c.offsetHeight * 2;
+  const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
+  return { ctx, w: c.offsetWidth, h: c.offsetHeight };
+}
+
+function drawShape(ctx, x, y, sides, size, color, glow) {
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (sides === 0) { ctx.arc(x, y, size, 0, Math.PI*2); }
+  else { for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](x+size*Math.cos(a),y+size*Math.sin(a)); } }
+  ctx.stroke();
+  ctx.fillStyle = color + '33'; ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ============ DAMAGE TYPE DEMOS ============
+function draw3Elem() {
+  const r = getCtx('cv-3elem'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('3 Elements + Physical', 20, 25);
+
+  // Triangle diagram
+  const cx = w*0.3, cy = h*0.55, rad = 55;
+  const elems = [
+    { name: 'THERMAL', color: '#ff0055', angle: -Math.PI/2 },
+    { name: 'KINETIC', color: '#00ffff', angle: Math.PI/6 + Math.PI/3 },
+    { name: 'ELECTRIC', color: '#a855f7', angle: Math.PI/6 + 2*Math.PI/3 + Math.PI/3 },
+  ];
+
+  // Draw cycle arrows
+  elems.forEach((e, i) => {
+    const next = elems[(i+1)%3];
+    const x1 = cx + rad*Math.cos(e.angle), y1 = cy + rad*Math.sin(e.angle);
+    const x2 = cx + rad*Math.cos(next.angle), y2 = cy + rad*Math.sin(next.angle);
+    ctx.strokeStyle = e.color + '66'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // Arrow head
+    const mx = (x1+x2)/2, my = (y1+y2)/2;
+    ctx.fillStyle = e.color; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('▸', mx + (x2-x1)*0.15, my + (y2-y1)*0.15 + 5);
+  });
+
+  // Element nodes
+  elems.forEach(e => {
+    const x = cx + rad*Math.cos(e.angle), y = cy + rad*Math.sin(e.angle);
+    drawShape(ctx, x, y, 0, 18, e.color, 10);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(e.name, x, y + 28);
+  });
+
+  // Physical (neutral) in center
+  ctx.fillStyle = '#888'; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#aaa'; ctx.font = '7px system-ui'; ctx.fillText('PHYS', cx, cy + 20);
+  ctx.textAlign = 'left';
+
+  // Enemy examples on right
+  ctx.fillStyle = '#888'; ctx.font = 'bold 10px system-ui'; ctx.fillText('Enemy Examples:', w*0.6, 55);
+
+  const enemyExamples = [
+    { y: 80, color: '#ff0055', shape: 0, label: 'Thermal-Resistant (red glow)' },
+    { y: 115, color: '#00ffff', shape: 4, label: 'Kinetic-Resistant (cyan glow)' },
+    { y: 150, color: '#a855f7', shape: 3, label: 'Electric-Resistant (purple glow)' },
+    { y: 185, color: '#888', shape: 6, label: 'No resistance (gray/white)' },
+  ];
+  enemyExamples.forEach(e => {
+    drawShape(ctx, w*0.64, e.y, e.shape, 10, e.color, 6);
+    ctx.fillStyle = '#999'; ctx.font = '9px system-ui';
+    ctx.fillText(e.label, w*0.64 + 18, e.y + 4);
+  });
+}
+
+function draw4Elem() {
+  const r = getCtx('cv-4elem'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('4 Elements (Dual Pairs) + Physical', 20, 25);
+
+  const cx = w*0.3, cy = h*0.55;
+
+  // Pair 1: Fire ↔ Ice
+  const pair1 = [
+    { name: 'FIRE', color: '#ff0055', x: cx-50, y: cy-25 },
+    { name: 'ICE', color: '#00ffff', x: cx+50, y: cy-25 },
+  ];
+  // Pair 2: Lightning ↔ Poison
+  const pair2 = [
+    { name: 'LIGHTNING', color: '#ffaa00', x: cx-50, y: cy+30 },
+    { name: 'POISON', color: '#00ff88', x: cx+50, y: cy+30 },
+  ];
+
+  // Draw pair connections
+  ctx.strokeStyle = '#ff005544'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pair1[0].x, pair1[0].y); ctx.lineTo(pair1[1].x, pair1[1].y); ctx.stroke();
+  ctx.fillStyle = '#ff005588'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('↔', cx, cy-25);
+
+  ctx.strokeStyle = '#ffaa0044';
+  ctx.beginPath(); ctx.moveTo(pair2[0].x, pair2[0].y); ctx.lineTo(pair2[1].x, pair2[1].y); ctx.stroke();
+  ctx.fillStyle = '#ffaa0088';
+  ctx.fillText('↔', cx, cy+30);
+
+  [...pair1, ...pair2].forEach(e => {
+    drawShape(ctx, e.x, e.y, 0, 16, e.color, 8);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(e.name, e.x, e.y + 24);
+  });
+
+  // Physical center
+  ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#999'; ctx.font = '7px system-ui'; ctx.fillText('PHYS', cx, cy + 16);
+  ctx.textAlign = 'left';
+
+  // Matchup table on right
+  ctx.fillStyle = '#888'; ctx.font = 'bold 10px system-ui'; ctx.fillText('Matchups:', w*0.6, 50);
+
+  const matchups = [
+    { text: 'Fire → strong vs Ice enemies', color: '#ff0055' },
+    { text: 'Ice → strong vs Fire enemies', color: '#00ffff' },
+    { text: 'Lightning → strong vs Poison enemies', color: '#ffaa00' },
+    { text: 'Poison → strong vs Lightning enemies', color: '#00ff88' },
+    { text: 'Physical → neutral vs all', color: '#888' },
+  ];
+  matchups.forEach((m, i) => {
+    ctx.fillStyle = m.color; ctx.font = '9px system-ui';
+    ctx.fillText(m.text, w*0.6, 72 + i*20);
+  });
+
+  // Combo hint
+  ctx.fillStyle = '#ff005566'; ctx.fillRect(w*0.58, 180, w*0.38, 24);
+  ctx.fillStyle = '#ff0055'; ctx.font = '9px system-ui';
+  ctx.fillText('💥 Combo: Fire + Poison = Explosion AoE', w*0.6, 196);
+}
+
+function draw6Elem() {
+  const r = getCtx('cv-6elem'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('6 Elements (Full Wheel)', 20, 25);
+
+  const cx = w*0.35, cy = h*0.55, rad = 60;
+  const elems = [
+    { name: 'FIRE', color: '#ff0055' },
+    { name: 'WIND', color: '#55ffaa' },
+    { name: 'EARTH', color: '#aa8844' },
+    { name: 'LIGHTNING', color: '#ffaa00' },
+    { name: 'WATER', color: '#00aaff' },
+    { name: 'VOID', color: '#aa55ff' },
+  ];
+
+  // Wheel
+  elems.forEach((e, i) => {
+    const a = Math.PI*2/6*i - Math.PI/2;
+    const x = cx + rad*Math.cos(a), y = cy + rad*Math.sin(a);
+    const next = (i+1)%6;
+    const na = Math.PI*2/6*next - Math.PI/2;
+    const nx = cx + rad*Math.cos(na), ny = cy + rad*Math.sin(na);
+
+    ctx.strokeStyle = e.color + '44'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(nx,ny); ctx.stroke();
+
+    drawShape(ctx, x, y, 0, 14, e.color, 8);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 6px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(e.name, x, y + 22);
+  });
+  ctx.textAlign = 'left';
+
+  // Arrow showing "beats"
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('Each beats clockwise neighbor', w*0.65, 60);
+
+  // Complexity warning
+  ctx.fillStyle = '#f8717133'; ctx.fillRect(w*0.63, 80, w*0.33, 50);
+  ctx.fillStyle = '#f87171'; ctx.font = 'bold 9px system-ui';
+  ctx.fillText('⚠ Complexity Warning:', w*0.65, 98);
+  ctx.fillStyle = '#f87171aa'; ctx.font = '8px system-ui';
+  ctx.fillText('15 unique matchups to memorize', w*0.65, 112);
+  ctx.fillText('Only ~2 towers per element', w*0.65, 124);
+
+  // Legend
+  ctx.fillStyle = '#888'; ctx.font = '8px system-ui';
+  elems.forEach((e,i) => {
+    ctx.fillStyle = e.color;
+    ctx.fillRect(w*0.65, 145+i*16, 8, 8);
+    ctx.fillStyle = '#999'; ctx.font = '8px system-ui';
+    ctx.fillText(`${e.name} → beats ${elems[(i+1)%6].name}`, w*0.65+14, 153+i*16);
+  });
+}
+
+// ============ TOWER ROSTER DEMOS ============
+function drawRosterRole() {
+  const r = getCtx('cv-roster-role'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('12 Towers — Role-Based', 20, 22);
+
+  const roles = [
+    { name: 'DPS (4)', color: '#ff0055', towers: [
+      { n: 'Pulse', shape: 3, desc: 'Fast single target' },
+      { n: 'Beam', shape: 4, desc: 'Sustained damage' },
+      { n: 'Sniper', shape: 5, desc: 'Long range, slow' },
+      { n: 'Nova', shape: 6, desc: 'Burst AoE damage' },
+    ]},
+    { name: 'CONTROL (3)', color: '#00ffff', towers: [
+      { n: 'Frost', shape: 6, desc: 'Slow enemies' },
+      { n: 'Vortex', shape: 8, desc: 'Pull enemies together' },
+      { n: 'Stun', shape: 4, desc: 'Stun lock' },
+    ]},
+    { name: 'SUPPORT (3)', color: '#00ff88', towers: [
+      { n: 'Amp', shape: 5, desc: 'Buff nearby towers' },
+      { n: 'Shield', shape: 8, desc: 'Reduce damage taken' },
+      { n: 'Radar', shape: 0, desc: 'Reveal + crit bonus' },
+    ]},
+    { name: 'ECONOMY (1) + ULTIMATE (1)', color: '#ffaa00', towers: [
+      { n: 'Miner', shape: 6, desc: 'Generates gold' },
+      { n: 'Omega', shape: 0, desc: 'Massive AoE, high cost' },
+    ]},
+  ];
+
+  let gy = 38;
+  roles.forEach(role => {
+    ctx.fillStyle = role.color; ctx.font = 'bold 9px system-ui';
+    ctx.fillText(role.name, 20, gy + 12);
+    ctx.strokeStyle = role.color + '33'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(20, gy+16); ctx.lineTo(w-20, gy+16); ctx.stroke();
+
+    role.towers.forEach((t, ti) => {
+      const tx = 25 + ti * 110;
+      const ty = gy + 38;
+      drawShape(ctx, tx + 14, ty, t.shape, 12, role.color, 6);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px system-ui'; ctx.fillText(t.n, tx + 32, ty - 2);
+      ctx.fillStyle = '#777'; ctx.font = '7px system-ui'; ctx.fillText(t.desc, tx + 32, ty + 10);
+    });
+    gy += 68;
+  });
+}
+
+function drawRosterElem() {
+  const r = getCtx('cv-roster-elem'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('12 Towers — Element-Spread', 20, 22);
+
+  const elements = [
+    { name: 'FIRE', color: '#ff0055', towers: [
+      { n: 'Flame Turret', role: 'DPS', shape: 3 },
+      { n: 'Inferno Ring', role: 'AoE', shape: 0 },
+      { n: 'Heat Wave', role: 'Debuff', shape: 5 },
+    ]},
+    { name: 'ICE', color: '#00ffff', towers: [
+      { n: 'Cryo Bolt', role: 'DPS', shape: 4 },
+      { n: 'Blizzard', role: 'AoE', shape: 0 },
+      { n: 'Freeze Ray', role: 'Control', shape: 6 },
+    ]},
+    { name: 'LIGHTNING', color: '#ffaa00', towers: [
+      { n: 'Spark Shot', role: 'DPS', shape: 3 },
+      { n: 'Chain Arc', role: 'AoE', shape: 0 },
+      { n: 'EMP Pulse', role: 'Control', shape: 8 },
+    ]},
+    { name: 'POISON', color: '#00ff88', towers: [
+      { n: 'Toxic Dart', role: 'DPS', shape: 3 },
+      { n: 'Gas Cloud', role: 'AoE', shape: 0 },
+      { n: 'Corrode', role: 'Debuff', shape: 5 },
+    ]},
+  ];
+
+  let gy = 38;
+  elements.forEach(elem => {
+    ctx.fillStyle = elem.color; ctx.font = 'bold 9px system-ui';
+    ctx.fillText(elem.name + ' (3 towers)', 20, gy + 12);
+    ctx.strokeStyle = elem.color + '33'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(20, gy+16); ctx.lineTo(w-20, gy+16); ctx.stroke();
+
+    elem.towers.forEach((t, ti) => {
+      const tx = 25 + ti * 150;
+      const ty = gy + 38;
+      drawShape(ctx, tx + 14, ty, t.shape, 11, elem.color, 6);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px system-ui'; ctx.fillText(t.n, tx + 32, ty - 2);
+      ctx.fillStyle = '#777'; ctx.font = '7px system-ui'; ctx.fillText(t.role, tx + 32, ty + 10);
+    });
+    gy += 62;
+  });
+}
+
+function drawRosterHybrid() {
+  const r = getCtx('cv-roster-hybrid'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('14 Towers — Hybrid (Element + Neutral Utility)', 20, 22);
+
+  // Elemental section
+  ctx.fillStyle = '#ff005588'; ctx.font = 'bold 9px system-ui'; ctx.fillText('ELEMENTAL TOWERS (8)', 20, 48);
+
+  const elemTowers = [
+    { n: 'Flame Turret', color: '#ff0055', role: 'DPS', shape: 3 },
+    { n: 'Inferno Ring', color: '#ff0055', role: 'AoE', shape: 0 },
+    { n: 'Cryo Bolt', color: '#00ffff', role: 'DPS', shape: 4 },
+    { n: 'Blizzard', color: '#00ffff', role: 'Control', shape: 0 },
+    { n: 'Spark Shot', color: '#ffaa00', role: 'DPS', shape: 3 },
+    { n: 'Chain Arc', color: '#ffaa00', role: 'AoE', shape: 0 },
+    { n: 'Toxic Dart', color: '#00ff88', role: 'DPS', shape: 3 },
+    { n: 'Gas Cloud', color: '#00ff88', role: 'Debuff', shape: 0 },
+  ];
+
+  elemTowers.forEach((t, i) => {
+    const col = i % 4, row = Math.floor(i / 4);
+    const tx = 25 + col * 115, ty = 60 + row * 46;
+    drawShape(ctx, tx + 10, ty + 10, t.shape, 9, t.color, 5);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px system-ui'; ctx.fillText(t.n, tx + 24, ty + 8);
+    ctx.fillStyle = '#777'; ctx.font = '7px system-ui'; ctx.fillText(t.role, tx + 24, ty + 18);
+  });
+
+  // Neutral section
+  const ny = 165;
+  ctx.fillStyle = '#88888888'; ctx.font = 'bold 9px system-ui'; ctx.fillText('NEUTRAL UTILITY (4)', 20, ny);
+
+  const neutralTowers = [
+    { n: 'Amplifier', color: '#fff', role: 'Buff nearby towers', shape: 8 },
+    { n: 'Gold Mine', color: '#FFD700', role: 'Economy — passive gold', shape: 6 },
+    { n: 'Gravity Well', color: '#aaa', role: 'Control — pull enemies', shape: 0 },
+    { n: 'Omega Cannon', color: '#ff55aa', role: 'Ultimate — massive damage', shape: 5 },
+  ];
+
+  // Dotted border for neutral section
+  ctx.strokeStyle = '#ffffff11'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.strokeRect(15, ny+5, w-30, 85);
+  ctx.setLineDash([]);
+
+  neutralTowers.forEach((t, i) => {
+    const tx = 25 + i * 115, ty = ny + 24;
+    drawShape(ctx, tx + 10, ty + 10, t.shape, 9, t.color, 5);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px system-ui'; ctx.fillText(t.n, tx + 24, ty + 8);
+    ctx.fillStyle = '#777'; ctx.font = '7px system-ui'; ctx.fillText(t.role, tx + 24, ty + 18);
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '8px system-ui'; ctx.fillText('Neutral towers have no element — useful in any build', 25, h-10);
+}
+
+// ============ CAMPAIGN DEMOS ============
+function drawCampLinear() {
+  const r = getCtx('cv-camp-linear'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('4 Worlds × 5 Maps + Boss', 20, 22);
+
+  const worlds = [
+    { name: 'THERMAL', color: '#ff0055', maps: 5 },
+    { name: 'KINETIC', color: '#00ffff', maps: 5 },
+    { name: 'ELECTRIC', color: '#a855f7', maps: 5 },
+    { name: 'FUSION', color: '#ffaa00', maps: 5 },
+  ];
+
+  worlds.forEach((world, wi) => {
+    const y = 42 + wi * 44;
+    ctx.fillStyle = world.color; ctx.font = 'bold 8px system-ui'; ctx.fillText(world.name, 15, y + 12);
+
+    // Maps as circles connected by line
+    ctx.strokeStyle = world.color + '33'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(85, y+8); ctx.lineTo(85 + 5*52, y+8); ctx.stroke();
+
+    for (let m = 0; m < world.maps; m++) {
+      const mx = 95 + m * 52;
+      const isBoss = m === 4;
+      const done = wi < 2 || (wi === 2 && m < 3);
+      const current = wi === 2 && m === 3;
+
+      ctx.beginPath();
+      if (isBoss) {
+        // Boss node (diamond)
+        ctx.moveTo(mx, y-4); ctx.lineTo(mx+12, y+8); ctx.lineTo(mx, y+20); ctx.lineTo(mx-12, y+8); ctx.closePath();
+      } else {
+        ctx.arc(mx, y+8, 10, 0, Math.PI*2);
+      }
+      ctx.fillStyle = done ? world.color : current ? '#fff' : '#222';
+      ctx.fill();
+      ctx.strokeStyle = current ? '#fff' : (done ? world.color : '#333');
+      ctx.lineWidth = current ? 2 : 1;
+      ctx.stroke();
+
+      if (done) {
+        ctx.fillStyle = '#FFD700'; ctx.font = '6px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText('★★★', mx, y+22);
+      }
+      if (isBoss) {
+        ctx.fillStyle = done ? '#000' : '#555'; ctx.font = 'bold 7px system-ui';
+        ctx.fillText('B', mx, y+11);
+      } else {
+        ctx.fillStyle = done ? '#000' : '#555'; ctx.font = '7px system-ui';
+        ctx.fillText(`${m+1}`, mx, y+11);
+      }
+      ctx.textAlign = 'left';
+    }
+  });
+
+  // Progress bar
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(15, h-28, w-30, 16);
+  ctx.fillStyle = '#ff0055'; ctx.fillRect(15, h-28, (w-30)*0.55, 16);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Campaign Progress: 55%  (11/20 maps)', w/2, h-17);
+  ctx.textAlign = 'left';
+}
+
+function drawCampBranch() {
+  const r = getCtx('cv-camp-branch'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('Branching Node Map (StS / FTL style)', 20, 22);
+
+  // Generate a simple branching map
+  const cols = 7;
+  const nodesPerCol = [1, 3, 3, 2, 3, 2, 1];
+  const nodeTypes = ['start', 'battle', 'battle', 'shop', 'elite', 'battle', 'boss'];
+  const typeColors = { start: '#4CAF50', battle: '#ff0055', shop: '#FFD700', elite: '#a855f7', boss: '#ff5500' };
+  const typeIcons = { start: '▶', battle: '⚔', shop: '🛒', elite: '★', boss: '💀' };
+
+  const allNodes = [];
+  nodesPerCol.forEach((count, col) => {
+    const nodes = [];
+    for (let i = 0; i < count; i++) {
+      const x = 40 + col * ((w-80) / (cols-1));
+      const spread = (count-1) * 30;
+      const y = h/2 + (i - (count-1)/2) * 35;
+      nodes.push({ x, y, type: nodeTypes[col], col });
+    }
+    allNodes.push(nodes);
+  });
+
+  // Draw connections
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  allNodes.forEach((colNodes, ci) => {
+    if (ci < allNodes.length - 1) {
+      colNodes.forEach(node => {
+        const nextCol = allNodes[ci+1];
+        const targets = nextCol.length <= 2 ? nextCol : [nextCol[Math.floor(Math.random()*nextCol.length)], nextCol[Math.floor(Math.random()*nextCol.length)]];
+        const uniqueTargets = [...new Set(targets)];
+        uniqueTargets.forEach(t => {
+          ctx.beginPath(); ctx.moveTo(node.x, node.y); ctx.lineTo(t.x, t.y); ctx.stroke();
+        });
+      });
+    }
+  });
+
+  // Draw nodes
+  allNodes.flat().forEach(node => {
+    const color = typeColors[node.type];
+    ctx.beginPath(); ctx.arc(node.x, node.y, 12, 0, Math.PI*2);
+    ctx.fillStyle = node.col < 3 ? color : '#1a1a2e';
+    ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = node.col < 3 ? '#000' : '#888';
+    ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(typeIcons[node.type], node.x, node.y + 4);
+  });
+
+  // Legend
+  ctx.textAlign = 'left';
+  const legend = [['⚔ Battle','#ff0055'],['🛒 Shop','#FFD700'],['★ Elite','#a855f7'],['💀 Boss','#ff5500']];
+  legend.forEach((l,i) => {
+    ctx.fillStyle = l[1]; ctx.font = '8px system-ui'; ctx.fillText(l[0], 15+i*80, h-10);
+  });
+}
+
+function drawCampHybrid() {
+  const r = getCtx('cv-camp-hybrid'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('4 Worlds + Branching Paths Inside Each', 20, 22);
+
+  // World overview (left side)
+  const worlds = [
+    { name: 'CORE', color: '#ff0055', done: true },
+    { name: 'FROST', color: '#00ffff', done: true },
+    { name: 'STORM', color: '#ffaa00', done: false, current: true },
+    { name: 'VOID', color: '#a855f7', done: false },
+  ];
+
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('WORLD SELECT:', 15, 48);
+
+  worlds.forEach((world, i) => {
+    const x = 15 + i * 100;
+    ctx.fillStyle = world.done ? world.color + '33' : (world.current ? '#1a1a2e' : '#111');
+    ctx.strokeStyle = world.current ? world.color : (world.done ? world.color + '66' : '#222');
+    ctx.lineWidth = world.current ? 2 : 1;
+    ctx.beginPath(); ctx.roundRect(x, 55, 90, 32, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = world.done ? world.color : (world.current ? '#fff' : '#444');
+    ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(world.name, x+45, 73);
+    if (world.done) { ctx.fillStyle = '#FFD700'; ctx.font = '7px system-ui'; ctx.fillText('✓ CLEAR', x+45, 83); }
+  });
+  ctx.textAlign = 'left';
+
+  // Branching path inside the "STORM" world (bottom area)
+  ctx.fillStyle = '#ffaa0033'; ctx.fillRect(10, 98, w-20, h-108);
+  ctx.strokeStyle = '#ffaa0044'; ctx.lineWidth = 1; ctx.strokeRect(10, 98, w-20, h-108);
+  ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 10px system-ui'; ctx.fillText('⚡ STORM WORLD — Choose Your Path', 20, 118);
+
+  // Mini branching map inside world
+  const miniNodes = [
+    [{x:40,y:155,t:'▶'}],
+    [{x:120,y:135,t:'⚔'},{x:120,y:175,t:'⚔'}],
+    [{x:200,y:120,t:'⚔'},{x:200,y:155,t:'🛒'},{x:200,y:190,t:'⚔'}],
+    [{x:280,y:135,t:'★'},{x:280,y:175,t:'⚔'}],
+    [{x:360,y:155,t:'💀'}],
+  ];
+
+  // Connections
+  ctx.strokeStyle = '#ffaa0033'; ctx.lineWidth = 1;
+  miniNodes.forEach((col, ci) => {
+    if (ci < miniNodes.length-1) {
+      col.forEach(n => {
+        miniNodes[ci+1].forEach(next => {
+          if (Math.abs(n.y - next.y) < 50) {
+            ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(next.x, next.y); ctx.stroke();
+          }
+        });
+      });
+    }
+  });
+
+  miniNodes.flat().forEach((n, i) => {
+    ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI*2);
+    ctx.fillStyle = i < 4 ? '#ffaa00' : '#1a1a2e'; ctx.fill();
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = i < 4 ? '#000' : '#888'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(n.t, n.x, n.y+4);
+  });
+  ctx.textAlign = 'left';
+}
+
+// ============ AUDIO DEMOS ============
+function drawAudioBars(ctx, x, y, w, h, color, barCount, pattern) {
+  const barW = Math.max(2, (w / barCount) - 2);
+  for (let i = 0; i < barCount; i++) {
+    const bx = x + i * (barW + 2);
+    const amplitude = pattern(i, barCount);
+    const bh = h * amplitude;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.3 + amplitude * 0.7;
+    ctx.fillRect(bx, y + h - bh, barW, bh);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWaveform(ctx, x, y, w, h, color, freq, amp) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= w; i++) {
+    const val = Math.sin(i * freq * 0.02) * amp * h/2 + Math.sin(i * freq * 0.005) * amp * h/4;
+    ctx[i===0?'moveTo':'lineTo'](x + i, y + h/2 + val);
+  }
+  ctx.stroke();
+}
+
+function drawAudioSynth() {
+  const r = getCtx('cv-audio-synth'); if (!r) return;
+  const { ctx, w, h } = r;
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'#1a0025'); grad.addColorStop(1,'#08080f');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#ff0055'; ctx.font = 'bold 14px system-ui'; ctx.fillText('SYNTHWAVE', 20, 30);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Pulsing synths, retro drums, driving bass', 20, 48);
+
+  // Equalizer bars
+  drawAudioBars(ctx, 20, 65, w-40, 60, '#ff0055', 32, (i, n) => {
+    return 0.3 + 0.7 * Math.abs(Math.sin(i * 0.3)) * (1 - Math.abs(i - n/2) / (n/2) * 0.5);
+  });
+
+  // Waveform
+  ctx.shadowColor = '#ff0055'; ctx.shadowBlur = 5;
+  drawWaveform(ctx, 20, 130, w-40, 40, '#ff005588', 3, 0.8);
+  drawWaveform(ctx, 20, 135, w-40, 40, '#a855f744', 5, 0.5);
+  ctx.shadowBlur = 0;
+
+  // BPM indicator
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(20, h-40, 100, 28);
+  ctx.fillStyle = '#ff0055'; ctx.font = 'bold 14px monospace'; ctx.fillText('128 BPM', 30, h-20);
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('High energy throughout • Bass-heavy mix', 135, h-20);
+}
+
+function drawAudioAmbient() {
+  const r = getCtx('cv-audio-ambient'); if (!r) return;
+  const { ctx, w, h } = r;
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'#0a1520'); grad.addColorStop(1,'#08080f');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#00ffff'; ctx.font = 'bold 14px system-ui'; ctx.fillText('AMBIENT ELECTRONIC', 20, 30);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Atmospheric pads, subtle beats, evolving textures', 20, 48);
+
+  // Gentle equalizer
+  drawAudioBars(ctx, 20, 65, w-40, 50, '#00ffff', 40, (i, n) => {
+    return 0.1 + 0.3 * Math.sin(i * 0.15) * Math.sin(i * 0.15) + 0.1 * Math.sin(i * 0.4);
+  });
+
+  // Smooth waves
+  ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 8;
+  drawWaveform(ctx, 20, 120, w-40, 50, '#00ffff44', 1, 0.4);
+  drawWaveform(ctx, 20, 130, w-40, 50, '#00888844', 0.7, 0.3);
+  drawWaveform(ctx, 20, 125, w-40, 50, '#00ffff22', 2, 0.2);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(20, h-40, 100, 28);
+  ctx.fillStyle = '#00ffff'; ctx.font = 'bold 14px monospace'; ctx.fillText('80 BPM', 32, h-20);
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('Calm but tense • SFX-forward mix', 135, h-20);
+}
+
+function drawAudioDnB() {
+  const r = getCtx('cv-audio-dnb'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 14px system-ui'; ctx.fillText('DnB / AGGRESSIVE', 20, 30);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Fast breakbeats, heavy bass, glitchy textures', 20, 48);
+
+  // Aggressive equalizer
+  drawAudioBars(ctx, 20, 60, w-40, 65, '#ffaa00', 48, (i, n) => {
+    return 0.2 + 0.8 * Math.abs(Math.sin(i * 0.5 + Math.cos(i * 0.2) * 3));
+  });
+
+  // Jagged waveform
+  ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 5;
+  ctx.beginPath();
+  for (let i = 0; i <= w-40; i++) {
+    const val = Math.sin(i*0.08)*20 + Math.sin(i*0.3)*10 + (Math.random()-0.5)*8;
+    ctx[i===0?'moveTo':'lineTo'](20+i, 150+val);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(20, h-40, 100, 28);
+  ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 14px monospace'; ctx.fillText('174 BPM', 28, h-20);
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('Maximum intensity • Relentless energy', 135, h-20);
+}
+
+function drawAudioAdaptive() {
+  const r = getCtx('cv-audio-adaptive'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#ff55aa'; ctx.font = 'bold 14px system-ui'; ctx.fillText('ADAPTIVE LAYERED', 20, 30);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Music shifts based on game state', 20, 48);
+
+  // Three phases
+  const phases = [
+    { name: 'BUILD PHASE', color: '#00ffff', bpm: '80', intensity: 0.2, desc: 'Ambient pads only' },
+    { name: 'WAVE ACTIVE', color: '#ffaa00', bpm: '120', intensity: 0.6, desc: '+Drums +Bass' },
+    { name: 'BOSS / LATE', color: '#ff0055', bpm: '140', intensity: 1.0, desc: '+Lead +FX +Intensity' },
+  ];
+
+  phases.forEach((p, i) => {
+    const pw = (w - 50) / 3;
+    const x = 15 + i * (pw + 5);
+    const y = 60;
+
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x, y, pw, h-75);
+    ctx.strokeStyle = p.color + '66'; ctx.lineWidth = 1; ctx.strokeRect(x, y, pw, h-75);
+
+    ctx.fillStyle = p.color; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(p.name, x+pw/2, y+16);
+
+    // Mini equalizer
+    const barCount = 16;
+    const barW = Math.max(2, (pw-16) / barCount - 1);
+    for (let b = 0; b < barCount; b++) {
+      const bx = x + 8 + b * (barW + 1);
+      const amp = p.intensity * (0.3 + 0.7 * Math.abs(Math.sin(b * 0.4)));
+      const bh = 40 * amp;
+      ctx.fillStyle = p.color + '88';
+      ctx.fillRect(bx, y+75-bh, barW, bh);
+    }
+
+    // Layer labels
+    ctx.fillStyle = '#999'; ctx.font = '7px system-ui';
+    const layers = ['Pads','Drums','Bass','Lead','FX'];
+    layers.forEach((l, li) => {
+      const active = li <= i + 1;
+      ctx.fillStyle = active ? p.color : '#333';
+      ctx.fillText(active ? '■ ' + l : '□ ' + l, x+pw/2, y+90+li*13);
+    });
+
+    ctx.fillStyle = p.color + '44'; ctx.fillRect(x+8, h-38, pw-16, 16);
+    ctx.fillStyle = p.color; ctx.font = 'bold 8px system-ui';
+    ctx.fillText(p.bpm + ' BPM', x+pw/2, h-27);
+  });
+  ctx.textAlign = 'left';
+}
+
+// ============ INIT ============
+window.addEventListener('load', () => {
+  draw3Elem(); draw4Elem(); draw6Elem();
+  drawRosterRole(); drawRosterElem(); drawRosterHybrid();
+  drawCampLinear(); drawCampBranch(); drawCampHybrid();
+  drawAudioSynth(); drawAudioAmbient(); drawAudioDnB(); drawAudioAdaptive();
+});
+
+const sects = document.querySelectorAll('.section');
+const navAs = document.querySelectorAll('nav a');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sects.forEach(s => { if (window.scrollY >= s.offsetTop - 100) cur = s.id; });
+  navAs.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+cur));
+});
+</script>
+</body>
+</html>

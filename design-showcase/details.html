@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tower Defense — Detailed Design (Round 2)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    overflow-x: hidden;
+  }
+  header {
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a3e 100%);
+    padding: 40px 20px;
+    text-align: center;
+    border-bottom: 2px solid #0ff;
+  }
+  header h1 { font-size: 2.2rem; color: #fff; margin-bottom: 8px; }
+  header p { color: #a0a0b0; font-size: 1rem; }
+  header .locked {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  header .locked span {
+    background: #1a1a2e;
+    border: 1px solid #0ff3;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    color: #0ff;
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: #0a0a12;
+    border-bottom: 1px solid #1a1a2a;
+    padding: 0 20px;
+    display: flex; gap: 0; overflow-x: auto;
+  }
+  nav a {
+    color: #666; text-decoration: none; padding: 14px 18px;
+    font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+    border-bottom: 3px solid transparent; transition: all 0.2s;
+  }
+  nav a:hover, nav a.active { color: #0ff; border-bottom-color: #0ff; }
+
+  .section {
+    max-width: 1400px; margin: 0 auto; padding: 50px 20px;
+    border-bottom: 1px solid #1a1a2a;
+  }
+  .section h2 { font-size: 1.7rem; color: #fff; margin-bottom: 6px; }
+  .section .subtitle { color: #888; font-size: 0.95rem; margin-bottom: 35px; }
+
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .option-card {
+    background: #0e0e18;
+    border: 2px solid #1e1e2e;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+  .option-card:hover { border-color: #0ff; transform: translateY(-3px); box-shadow: 0 6px 25px rgba(0,255,255,0.1); }
+  .option-card.selected { border-color: #0ff; box-shadow: 0 0 0 1px #0ff, 0 6px 25px rgba(0,255,255,0.15); }
+  .option-card.selected .card-header::after {
+    content: '✓ SELECTED'; position: absolute; top: 10px; right: 10px;
+    background: #0ff; color: #000; padding: 3px 8px; border-radius: 4px;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 1px;
+  }
+
+  .card-header { position: relative; padding: 4px; }
+  .card-header h3 {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(0,0,0,0.75); padding: 5px 12px; border-radius: 6px;
+    font-size: 1rem; color: #fff; backdrop-filter: blur(4px);
+  }
+  .card-canvas { width: 100%; height: 200px; display: block; border-radius: 8px; }
+
+  .card-body { padding: 16px; }
+  .card-body .desc { color: #a0a0b0; font-size: 0.85rem; line-height: 1.6; margin-bottom: 14px; }
+
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pros, .cons { font-size: 0.8rem; line-height: 1.7; }
+  .pros h4 { color: #4ade80; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 1px; }
+  .cons h4 { color: #f87171; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 1px; }
+  .pros li, .cons li { list-style: none; padding-left: 14px; position: relative; color: #999; }
+  .pros li::before { content: '+'; position: absolute; left: 0; color: #4ade80; font-weight: 700; }
+  .cons li::before { content: '−'; position: absolute; left: 0; color: #f87171; font-weight: 700; }
+
+  #summary {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #0e0e1e; border-top: 2px solid #0ff;
+    padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+    z-index: 200; transform: translateY(100%); transition: transform 0.3s;
+  }
+  #summary.visible { transform: translateY(0); }
+  #summary .choices { display: flex; gap: 16px; flex-wrap: wrap; }
+  #summary .choice-tag { background: #1a1a2e; padding: 5px 12px; border-radius: 6px; font-size: 0.78rem; }
+  #summary .choice-tag span { color: #0ff; font-weight: 600; }
+  #summary button {
+    background: #0ff; color: #000; border: none; padding: 10px 28px; border-radius: 8px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: background 0.2s;
+  }
+  #summary button:hover { background: #5ff; }
+  #summary button:disabled { background: #334; color: #666; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Detailed Design — Round 2</h1>
+  <p>Deeper decisions based on your locked-in choices</p>
+  <div class="locked">
+    <span>Vector 2D</span>
+    <span>Abstract / Geometric</span>
+    <span>Maze Building</span>
+    <span>Roguelite</span>
+    <span>12-15 Towers</span>
+    <span>Branching Upgrades</span>
+    <span>Campaign + Endless + Challenges</span>
+  </div>
+</header>
+
+<nav id="nav">
+  <a href="#color-palette" class="active">Color Palette</a>
+  <a href="#enemies">Enemy Design</a>
+  <a href="#economy">Economy</a>
+  <a href="#roguelite">Roguelite Loop</a>
+  <a href="#ui-layout">UI Layout</a>
+  <a href="#tech-stack">Tech Stack</a>
+</nav>
+
+<!-- ==================== COLOR PALETTE ==================== -->
+<div class="section" id="color-palette">
+  <h2>1. Color Palette & Visual Identity</h2>
+  <p class="subtitle">The neon color scheme that defines the game's mood and readability.</p>
+  <div class="options-grid" data-group="palette">
+
+    <div class="option-card" data-value="cyberpunk">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-cyber"></canvas>
+        <h3>Cyberpunk Neon</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Hot pink, cyan, and purple on dark backgrounds. High contrast, aggressive energy. Think Hotline Miami or Cyberpunk aesthetics.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Extremely eye-catching</li>
+            <li>Strong brand identity</li>
+            <li>Great for glow/bloom effects</li>
+            <li>Trendy, appeals to wide audience</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Can cause eye strain in long sessions</li>
+            <li>Hard to differentiate many element types</li>
+            <li>Oversaturated market with this look</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="midnight">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-midnight"></canvas>
+        <h3>Midnight Aurora</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Deep blues and teals with green/gold accents. Cooler, more refined palette. Calming yet vibrant. Think Northern Lights.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Easy on the eyes for long play</li>
+            <li>Elegant, premium feel</li>
+            <li>Good readability contrast</li>
+            <li>Distinct from typical neon games</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less immediately striking</li>
+            <li>Fewer "wow" moments visually</li>
+            <li>Can feel muted for action games</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="synthwave">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-synth"></canvas>
+        <h3>Synthwave Sunset</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Orange, magenta, and violet gradients. Warm retro-futurism. Think Outrun, sunset grids, and 80s sci-fi.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Warm, inviting aesthetic</li>
+            <li>Strong nostalgia appeal</li>
+            <li>Great gradient opportunities</li>
+            <li>Unique for tower defense genre</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Limited cool-tone options</li>
+            <li>Warm colors harder for "danger" signals</li>
+            <li>Synthwave fatigue in indie scene</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="monochrome">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-mono"></canvas>
+        <h3>Monochrome + Accent</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Mostly white/gray on black with a single accent color per element type. Ultra-minimal. Think Superhot or Return of the Obra Dinn.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum readability</li>
+            <li>Color = meaning (each type = one hue)</li>
+            <li>Strikingly minimal and unique</li>
+            <li>Easiest to maintain visual consistency</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Can feel stark or cold</li>
+            <li>Less spectacle for VFX moments</li>
+            <li>Some players find it boring</li>
+            <li>Screenshots may look plain</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ENEMIES ==================== -->
+<div class="section" id="enemies">
+  <h2>2. Enemy Design Philosophy</h2>
+  <p class="subtitle">How enemies are differentiated — what makes each wave feel different?</p>
+  <div class="options-grid" data-group="enemies">
+
+    <div class="option-card" data-value="shape-type">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-enemy-shape"></canvas>
+        <h3>Shape = Type</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Enemy shape directly communicates behavior. Circles are fast, squares are tanky, triangles deal damage. Instantly readable with no learning curve.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Zero learning curve — shape IS info</li>
+            <li>Perfect for abstract theme</li>
+            <li>Scales to many enemy types (3-sided to N-sided)</li>
+            <li>Easy to differentiate at a glance</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Limited to ~8-10 distinct shapes</li>
+            <li>Harder to show "elite" variants</li>
+            <li>No personality or character</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="color-coded">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-enemy-color"></canvas>
+        <h3>Color = Resistance</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Enemy color shows what they resist. Red enemies resist fire, blue resist ice, etc. Shape shows behavior, color shows weakness. Dual-encoding.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Two info channels (shape + color)</li>
+            <li>Natural tower/enemy counter system</li>
+            <li>More strategic depth</li>
+            <li>Colorful, visually dynamic waves</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Accessibility concern (colorblindness)</li>
+            <li>More complex to learn</li>
+            <li>Can clash with palette choices</li>
+            <li>Needs clear legend/tutorial</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="composite">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-enemy-comp"></canvas>
+        <h3>Composite / Modular</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Enemies are built from parts: a core shape + orbiting shields, rings, or layers. Strip layers to kill. Bosses are complex multi-part entities.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Visual damage feedback (layers break)</li>
+            <li>Infinite enemy variety from combinations</li>
+            <li>Bosses feel epic and multi-phase</li>
+            <li>Unique to this game</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>More complex rendering</li>
+            <li>Harder to read at a glance</li>
+            <li>Balance complexity increases</li>
+            <li>Performance cost with many enemies</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ECONOMY ==================== -->
+<div class="section" id="economy">
+  <h2>3. In-Match Economy</h2>
+  <p class="subtitle">How players earn and spend resources during a match.</p>
+  <div class="options-grid" data-group="economy">
+
+    <div class="option-card" data-value="simple-gold">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-econ-simple"></canvas>
+        <h3>Simple Gold</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">One resource: gold. Earn per kill + wave bonus. Spend on towers and upgrades. Sell towers for partial refund. Classic and clean.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Easiest to understand</li>
+            <li>Every decision is gold vs gold</li>
+            <li>Proven model in every major TD</li>
+            <li>Simple UI — one number</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less strategic depth</li>
+            <li>No tension between resource types</li>
+            <li>Optimal play can be "solved"</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="interest">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-econ-interest"></canvas>
+        <h3>Gold + Interest / Banking</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Gold with an interest system: unspent gold earns bonus gold each wave. Creates risk/reward tension — save for interest or spend for defense?</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Deep economic strategy layer</li>
+            <li>Risk/reward each wave</li>
+            <li>Rewards skilled players who can greed</li>
+            <li>Popular in Bloons, autobattlers</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Harder to teach new players</li>
+            <li>"Greeding" can feel unintuitive</li>
+            <li>Snowball potential (rich get richer)</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="dual-resource">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-econ-dual"></canvas>
+        <h3>Dual Resources (Energy + Matter)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Two resources: Energy (from kills, powers abilities) and Matter (per wave, builds towers). Different towers cost different ratios. Fits sci-fi/abstract theme.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>More build diversity (budget constraints)</li>
+            <li>Natural tower specialization</li>
+            <li>Thematic for abstract setting</li>
+            <li>Prevents one-strategy dominance</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>More complex UI (two counters)</li>
+            <li>Harder to balance</li>
+            <li>Can feel frustrating if one resource starved</li>
+            <li>Longer learning curve</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ROGUELITE LOOP ==================== -->
+<div class="section" id="roguelite">
+  <h2>4. Roguelite Loop Structure</h2>
+  <p class="subtitle">What persists between runs and how the meta-progression works.</p>
+  <div class="options-grid" data-group="roguelite">
+
+    <div class="option-card" data-value="unlock-tree">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-rog-tree"></canvas>
+        <h3>Unlock Tree</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Earn "shards" each run. Spend on a skill tree that permanently unlocks new towers, upgrades, and modifiers. Linear progression with branches.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Clear progression path</li>
+            <li>Players always working toward something</li>
+            <li>Easy to gate content</li>
+            <li>Visual satisfaction (filling out a tree)</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Can feel like a grind wall</li>
+            <li>Early runs may feel incomplete</li>
+            <li>Finite — once fully unlocked, loop ends</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="deck-building">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-rog-deck"></canvas>
+        <h3>Deck Building</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Start each run by drafting a "deck" of available towers from your collection. Between runs, earn new tower cards to expand your collection. Each run uses a subset.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Every run feels strategically different</li>
+            <li>Collection-building is addictive</li>
+            <li>Natural synergy discovery</li>
+            <li>Fits the "12-15 towers" roster perfectly</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>More complex pre-run UI needed</li>
+            <li>Bad drafts can feel unwinnable</li>
+            <li>Need enough towers for varied decks</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="run-rewards">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-rog-reward"></canvas>
+        <h3>Wave Rewards (Slay the Spire style)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">After every N waves, pick 1 of 3 random rewards: new tower, upgrade, passive ability, or relic. Build your loadout as you go. Between runs, unlock new items for the reward pool.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Proven, beloved model (StS, Hades)</li>
+            <li>Moment-to-moment excitement</li>
+            <li>Adapting build mid-run is thrilling</li>
+            <li>Huge variety in runs</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>RNG can frustrate (bad offers)</li>
+            <li>Need large item/relic pool</li>
+            <li>Balance is the hardest of the three</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== UI LAYOUT ==================== -->
+<div class="section" id="ui-layout">
+  <h2>5. UI / HUD Layout</h2>
+  <p class="subtitle">Where information lives on screen during gameplay.</p>
+  <div class="options-grid" data-group="uiLayout">
+
+    <div class="option-card" data-value="bottom-bar">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-ui-bottom"></canvas>
+        <h3>Bottom Bar</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Tower selection and info in a bar at the bottom. Resources and wave info at the top. Maximum vertical play space. Mobile-friendly thumb zone.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Familiar layout (most TD games)</li>
+            <li>Thumb-friendly for mobile/touch</li>
+            <li>Towers always visible</li>
+            <li>Good for widescreen monitors</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Reduces vertical play space</li>
+            <li>Can feel cramped on small screens</li>
+            <li>Info at top + bottom splits attention</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="side-panel">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-ui-side"></canvas>
+        <h3>Right Side Panel</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Collapsible panel on the right with towers, upgrades, and info. Top bar for resources. Play area takes most of the screen.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>All info consolidated on one side</li>
+            <li>Room for detailed tower info</li>
+            <li>Can show upgrade paths inline</li>
+            <li>Collapsible for full-screen play</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Reduces horizontal play space</li>
+            <li>Less mobile-friendly</li>
+            <li>Can feel "PC app"-like</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="minimal-radial">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-ui-radial"></canvas>
+        <h3>Minimal + Radial Menu</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Almost no permanent HUD. Right-click/hold on grid to open a radial tower menu. Info appears contextually. Maximum immersion.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum play area — full immersion</li>
+            <li>Clean, modern feel</li>
+            <li>Fits abstract/minimal aesthetic perfectly</li>
+            <li>Info only when you need it</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Slower tower selection (extra click)</li>
+            <li>Harder for new players to discover</li>
+            <li>Can't see all options at once</li>
+            <li>Radial menus are tricky on mobile</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TECH STACK ==================== -->
+<div class="section" id="tech-stack">
+  <h2>6. Tech Stack</h2>
+  <p class="subtitle">The engine/framework powering the game. Affects dev speed, performance, and capabilities.</p>
+  <div class="options-grid" data-group="techStack">
+
+    <div class="option-card" data-value="phaser">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-tech-phaser"></canvas>
+        <h3>Phaser 3</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Full-featured 2D game framework. Built-in physics, scenes, input, tilemaps, tweens, particles. Huge community. WebGL with Canvas fallback.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Batteries-included (everything built in)</li>
+            <li>Massive community and tutorials</li>
+            <li>Scene management out of the box</li>
+            <li>Good TypeScript support</li>
+            <li>Mature and battle-tested</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Large bundle size (~1MB)</li>
+            <li>Opinionated architecture</li>
+            <li>Some abstractions add overhead</li>
+            <li>Custom rendering harder</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="pixi">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-tech-pixi"></canvas>
+        <h3>PixiJS + Custom</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Fast WebGL renderer only — you build game logic yourself. Maximum control over rendering. Add libraries as needed (Howler for audio, etc).</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Fastest 2D WebGL renderer</li>
+            <li>Total control over architecture</li>
+            <li>Smaller base bundle</li>
+            <li>Best for custom visual effects</li>
+            <li>No framework opinions to fight</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Must build game systems yourself</li>
+            <li>No built-in scene management</li>
+            <li>More boilerplate code needed</li>
+            <li>Steeper learning curve initially</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="canvas-raw">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-tech-raw"></canvas>
+        <h3>Raw Canvas/WebGL</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">No framework — pure Canvas 2D or raw WebGL. Zero dependencies. Maximum performance ceiling. You own every line of rendering code.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Zero dependencies — smallest possible</li>
+            <li>Full understanding of every system</li>
+            <li>Maximum performance potential</li>
+            <li>Educational value</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Reinventing the wheel constantly</li>
+            <li>Slowest development speed</li>
+            <li>Must build sprite batching, etc</li>
+            <li>No community patterns to follow</li>
+            <li>High risk of technical debt</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="summary">
+  <div class="choices" id="choices-display"></div>
+  <button id="confirm-btn" disabled>Select all 6 to continue</button>
+</div>
+
+<script>
+const selections = {};
+const groupLabels = {
+  palette: 'Palette',
+  enemies: 'Enemies',
+  economy: 'Economy',
+  roguelite: 'Roguelite',
+  uiLayout: 'UI Layout',
+  techStack: 'Tech Stack'
+};
+
+document.querySelectorAll('.option-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const group = card.closest('[data-group]').dataset.group;
+    card.closest('.options-grid').querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selections[group] = { value: card.dataset.value, label: card.querySelector('h3').textContent };
+    updateSummary();
+  });
+});
+
+function updateSummary() {
+  const summary = document.getElementById('summary');
+  const display = document.getElementById('choices-display');
+  const btn = document.getElementById('confirm-btn');
+  display.innerHTML = '';
+  for (const [g, {label}] of Object.entries(selections)) {
+    display.innerHTML += `<div class="choice-tag"><span>${groupLabels[g]}:</span> ${label}</div>`;
+  }
+  const count = Object.keys(selections).length;
+  if (count > 0) summary.classList.add('visible');
+  btn.disabled = count < 6;
+  btn.textContent = count < 6 ? `${count}/6 selected` : 'Confirm Selections ✓';
+}
+
+// ============ CANVAS RENDERERS ============
+function getCtx(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  c.width = c.offsetWidth * 2;
+  c.height = c.offsetHeight * 2;
+  const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
+  return { ctx, w: c.offsetWidth, h: c.offsetHeight };
+}
+
+// COLOR PALETTES
+function drawCyberPalette() {
+  const r = getCtx('cv-cyber'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#08080f'; ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#ff005522'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 25) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // Neon path
+  ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3;
+  ctx.shadowColor = '#0ff'; ctx.shadowBlur = 15;
+  ctx.beginPath(); ctx.moveTo(0,h*0.5); ctx.lineTo(w*0.3,h*0.5); ctx.lineTo(w*0.3,h*0.2); ctx.lineTo(w*0.7,h*0.2); ctx.lineTo(w*0.7,h*0.7); ctx.lineTo(w,h*0.7); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Towers
+  [[w*0.15,h*0.3,'#ff0055',4],[w*0.5,h*0.4,'#0ff',6],[w*0.5,h*0.05,'#a855f7',5],[w*0.85,h*0.5,'#ff0055',3]].forEach(([x,y,color,sides]) => {
+    ctx.shadowColor = color; ctx.shadowBlur = 15;
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; const px = x+12*Math.cos(a); const py = y+12*Math.sin(a); i===0?ctx.moveTo(px,py):ctx.lineTo(px,py); }
+    ctx.stroke(); ctx.fillStyle = color+'33'; ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // Enemies
+  ctx.fillStyle = '#ff0055';
+  for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(w*0.4+i*15, h*0.2, 4, 0, Math.PI*2); ctx.fill(); }
+
+  // Beam
+  ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.moveTo(w*0.5, h*0.05); ctx.lineTo(w*0.52, h*0.2); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Palette swatches
+  const colors = ['#ff0055','#00ffff','#a855f7','#ff00ff','#111'];
+  colors.forEach((c,i) => { ctx.fillStyle = c; ctx.fillRect(10+i*32, h-22, 26, 14); ctx.strokeStyle='#fff3'; ctx.strokeRect(10+i*32,h-22,26,14); });
+}
+
+function drawMidnightPalette() {
+  const r = getCtx('cv-midnight'); if (!r) return;
+  const { ctx, w, h } = r;
+  const grad = ctx.createLinearGradient(0,0,w,h);
+  grad.addColorStop(0,'#0a1628'); grad.addColorStop(1,'#0d2137');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = '#1a4a6a22'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 25) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  ctx.strokeStyle = '#2dd4bf'; ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#2dd4bf'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(0,h*0.4); ctx.bezierCurveTo(w*0.3,h*0.2,w*0.5,h*0.7,w,h*0.5); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  [[w*0.2,h*0.55,'#2dd4bf',5],[w*0.45,h*0.25,'#38bdf8',6],[w*0.7,h*0.6,'#a3e635',4],[w*0.85,h*0.3,'#fbbf24',8]].forEach(([x,y,color,sides]) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](x+11*Math.cos(a),y+11*Math.sin(a)); }
+    ctx.stroke(); ctx.fillStyle = color+'22'; ctx.fill(); ctx.shadowBlur = 0;
+  });
+
+  for (let i = 0; i < 4; i++) { ctx.fillStyle = '#f87171'; ctx.beginPath(); ctx.arc(w*0.55+i*14, h*0.45, 4, 0, Math.PI*2); ctx.fill(); }
+
+  const colors = ['#2dd4bf','#38bdf8','#a3e635','#fbbf24','#0d2137'];
+  colors.forEach((c,i) => { ctx.fillStyle = c; ctx.fillRect(10+i*32,h-22,26,14); ctx.strokeStyle='#fff3'; ctx.strokeRect(10+i*32,h-22,26,14); });
+}
+
+function drawSynthPalette() {
+  const r = getCtx('cv-synth'); if (!r) return;
+  const { ctx, w, h } = r;
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'#1a0533'); grad.addColorStop(0.5,'#3d0f5a'); grad.addColorStop(1,'#0a0a1a');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+  // Sunset gradient band
+  const sun = ctx.createLinearGradient(0,h*0.3,0,h*0.6);
+  sun.addColorStop(0,'#ff6b3520'); sun.addColorStop(0.5,'#f43f5e30'); sun.addColorStop(1,'transparent');
+  ctx.fillStyle = sun; ctx.fillRect(0,0,w,h);
+
+  // Retro grid
+  ctx.strokeStyle = '#f43f5e22'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 25) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  ctx.strokeStyle = '#ff6b35'; ctx.lineWidth = 2.5; ctx.shadowColor = '#ff6b35'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.moveTo(0,h*0.5); ctx.lineTo(w*0.25,h*0.5); ctx.lineTo(w*0.25,h*0.2); ctx.lineTo(w*0.75,h*0.2); ctx.lineTo(w*0.75,h*0.7); ctx.lineTo(w,h*0.7); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  [[w*0.12,h*0.3,'#ff6b35',3],[w*0.5,h*0.4,'#f43f5e',5],[w*0.5,h*0.05,'#c084fc',6],[w*0.88,h*0.5,'#fb923c',4]].forEach(([x,y,color,sides]) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.shadowColor = color; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](x+11*Math.cos(a),y+11*Math.sin(a)); }
+    ctx.stroke(); ctx.fillStyle = color+'33'; ctx.fill(); ctx.shadowBlur = 0;
+  });
+
+  const colors = ['#ff6b35','#f43f5e','#c084fc','#fb923c','#1a0533'];
+  colors.forEach((c,i) => { ctx.fillStyle = c; ctx.fillRect(10+i*32,h-22,26,14); ctx.strokeStyle='#fff3'; ctx.strokeRect(10+i*32,h-22,26,14); });
+}
+
+function drawMonoPalette() {
+  const r = getCtx('cv-mono'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#050505'; ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = '#ffffff0a'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 25) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // White path
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0,h*0.5); ctx.lineTo(w*0.3,h*0.5); ctx.lineTo(w*0.3,h*0.15); ctx.lineTo(w*0.7,h*0.15); ctx.lineTo(w*0.7,h*0.75); ctx.lineTo(w,h*0.75); ctx.stroke();
+
+  // Towers — each a single accent color
+  [[w*0.15,h*0.3,'#ff3333',4,'DMG'],[w*0.5,h*0.35,'#3399ff',6,'SLOW'],[w*0.5,h*0.02,'#33ff33',3,'AOE'],[w*0.85,h*0.55,'#ffaa00',5,'BUFF']].forEach(([x,y,color,sides,label]) => {
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](x+12*Math.cos(a),y+12*Math.sin(a)); }
+    ctx.stroke();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#666'; ctx.font = '7px system-ui'; ctx.textAlign = 'center'; ctx.fillText(label,x,y+22); ctx.textAlign = 'left';
+  });
+
+  // White enemies
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(w*0.4+i*14,h*0.15,3.5,0,Math.PI*2); ctx.fill(); }
+
+  const colors = ['#ffffff','#ff3333','#3399ff','#33ff33','#050505'];
+  colors.forEach((c,i) => { ctx.fillStyle = c; ctx.fillRect(10+i*32,h-22,26,14); ctx.strokeStyle='#fff3'; ctx.strokeRect(10+i*32,h-22,26,14); });
+}
+
+// ENEMY DESIGN
+function drawEnemyShape() {
+  const r = getCtx('cv-enemy-shape'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  const enemies = [
+    { x: w*0.12, sides: 0, color: '#ff5555', label: 'FAST\n(Circle)', speed: '●●●' },
+    { x: w*0.28, sides: 3, color: '#ffaa00', label: 'ATTACK\n(Triangle)', speed: '●●○' },
+    { x: w*0.44, sides: 4, color: '#5599ff', label: 'TANK\n(Square)', speed: '●○○' },
+    { x: w*0.60, sides: 5, color: '#aa55ff', label: 'SHIELD\n(Pentagon)', speed: '●●○' },
+    { x: w*0.76, sides: 6, color: '#55ff55', label: 'HEAL\n(Hexagon)', speed: '●○○' },
+    { x: w*0.92, sides: 8, color: '#ff55aa', label: 'BOSS\n(Octagon)', speed: '●○○' },
+  ];
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('Shape = Behavior', 15, 22);
+
+  enemies.forEach(e => {
+    const y = h*0.42;
+    ctx.strokeStyle = e.color; ctx.lineWidth = 2.5;
+    ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    if (e.sides === 0) { ctx.arc(e.x, y, 16, 0, Math.PI*2); }
+    else { for (let i = 0; i <= e.sides; i++) { const a = Math.PI*2/e.sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](e.x+16*Math.cos(a),y+16*Math.sin(a)); } }
+    ctx.stroke(); ctx.fillStyle = e.color+'33'; ctx.fill(); ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#999'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+    const lines = e.label.split('\n');
+    ctx.fillText(lines[0], e.x, y+30);
+    ctx.fillStyle = '#666'; ctx.fillText(lines[1], e.x, y+40);
+    ctx.fillStyle = e.color; ctx.font = '8px system-ui'; ctx.fillText(e.speed, e.x, y+52);
+    ctx.textAlign = 'left';
+  });
+}
+
+function drawEnemyColor() {
+  const r = getCtx('cv-enemy-color'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('Shape = Behavior, Color = Resistance', 15, 22);
+
+  // Matrix: rows = shapes, cols = colors
+  const shapes = [3, 4, 0, 6]; // triangle, square, circle, hex
+  const shapeNames = ['Fast', 'Tank', 'Swarm', 'Heal'];
+  const colors = ['#ff4444', '#4499ff', '#44ff44', '#ffaa00'];
+  const colorNames = ['Fire-Resist', 'Ice-Resist', 'Poison-Resist', 'Lightning-Resist'];
+
+  // Column headers
+  colorNames.forEach((name, i) => {
+    ctx.fillStyle = colors[i]; ctx.font = '7px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(name, 100+i*80, 48); ctx.textAlign = 'left';
+  });
+
+  shapes.forEach((sides, ri) => {
+    const y = 75 + ri*35;
+    ctx.fillStyle = '#888'; ctx.font = '8px system-ui'; ctx.fillText(shapeNames[ri], 10, y+4);
+
+    colors.forEach((color, ci) => {
+      const x = 100 + ci*80;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (sides === 0) { ctx.arc(x,y,8,0,Math.PI*2); }
+      else { for (let i = 0; i <= sides; i++) { const a = Math.PI*2/sides*i-Math.PI/2; ctx[i===0?'moveTo':'lineTo'](x+8*Math.cos(a),y+8*Math.sin(a)); } }
+      ctx.stroke(); ctx.fillStyle = color+'33'; ctx.fill();
+    });
+  });
+}
+
+function drawEnemyComposite() {
+  const r = getCtx('cv-enemy-comp'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('Composite Enemies — Layers Break Off', 15, 22);
+
+  // Full enemy
+  function drawComposite(x, y, layers, label) {
+    // Outer ring
+    if (layers >= 3) { ctx.strokeStyle = '#ff555544'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x,y,28,0,Math.PI*2); ctx.stroke(); }
+    // Shield ring
+    if (layers >= 2) {
+      ctx.strokeStyle = '#5599ff'; ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) { const a = Math.PI/2*i; ctx.beginPath(); ctx.arc(x,y,20,a-0.5,a+0.5); ctx.stroke(); }
+    }
+    // Core
+    ctx.fillStyle = '#ff5555'; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ff8888'; ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(label, x, y+42);
+    ctx.textAlign = 'left';
+  }
+
+  drawComposite(w*0.18, h*0.55, 3, 'Full HP');
+  drawComposite(w*0.42, h*0.55, 2, 'Outer Broken');
+  drawComposite(w*0.66, h*0.55, 1, 'Shields Down');
+
+  // Boss
+  ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 10px system-ui'; ctx.fillText('BOSS:', w*0.8, h*0.35);
+  const bx = w*0.88, by = h*0.6;
+  ctx.strokeStyle = '#ffaa0044'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx,by,32,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle = '#ff555544'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx,by,24,0,Math.PI*2); ctx.stroke();
+  for (let i = 0; i < 6; i++) { const a = Math.PI/3*i; ctx.strokeStyle = '#5599ff'; ctx.beginPath(); ctx.arc(bx,by,18,a-0.3,a+0.3); ctx.stroke(); }
+  ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(bx,by,10,0,Math.PI*2); ctx.fill();
+  // Orbiting parts
+  for (let i = 0; i < 3; i++) { const a = Math.PI*2/3*i; ctx.fillStyle = '#aa55ff'; ctx.beginPath(); ctx.arc(bx+22*Math.cos(a),by+22*Math.sin(a),5,0,Math.PI*2); ctx.fill(); }
+}
+
+// ECONOMY
+function drawEconSimple() {
+  const r = getCtx('cv-econ-simple'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(15,15,w-30,50);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 22px system-ui'; ctx.fillText('⬡ 1,250', 30, 50);
+  ctx.fillStyle = '#4CAF50'; ctx.font = '11px system-ui'; ctx.fillText('+25/kill  +100/wave', 150, 50);
+
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Spend gold on:', 25, 90);
+
+  const items = [{name:'Arrow Tower',cost:100,color:'#8B4513'},{name:'Upgrade Lv2',cost:200,color:'#FFD700'},{name:'Sell Tower',cost:'+50',color:'#4CAF50'}];
+  items.forEach((it,i) => {
+    const x = 25+i*130, y = 105;
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x,y,115,70);
+    ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(x+20,y+25,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ccc'; ctx.font = 'bold 10px system-ui'; ctx.fillText(it.name, x+38, y+22);
+    ctx.fillStyle = '#FFD700'; ctx.font = '10px system-ui'; ctx.fillText(typeof it.cost==='number'?`⬡ ${it.cost}`:it.cost, x+38, y+38);
+  });
+}
+
+function drawEconInterest() {
+  const r = getCtx('cv-econ-interest'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(15,15,w-30,50);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 22px system-ui'; ctx.fillText('⬡ 850', 30, 50);
+  ctx.fillStyle = '#4CAF50'; ctx.font = '11px system-ui'; ctx.fillText('+10% interest/wave = +85', 140, 45);
+  ctx.fillStyle = '#888'; ctx.font = '9px system-ui'; ctx.fillText('Bank ≥500 for bonus interest', 140, 58);
+
+  // Interest bar visualization
+  ctx.fillStyle = '#888'; ctx.font = 'bold 10px system-ui'; ctx.fillText('INTEREST BRACKETS:', 25, 90);
+
+  const brackets = [
+    {min:0,max:100,rate:'0%',fill:0.2},{min:100,max:300,rate:'5%',fill:0.4},
+    {min:300,max:500,rate:'10%',fill:0.6},{min:500,max:1000,rate:'15%',fill:0.8},
+    {min:1000,max:'∞',rate:'20%',fill:1.0}
+  ];
+  brackets.forEach((b,i) => {
+    const x = 25, y = 100+i*18;
+    const barW = 200;
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x,y,barW,14);
+    const grad = ctx.createLinearGradient(x,0,x+barW*b.fill,0);
+    grad.addColorStop(0,'#FFD70044'); grad.addColorStop(1,'#FFD700');
+    ctx.fillStyle = grad; ctx.fillRect(x,y,barW*b.fill,14);
+    ctx.fillStyle = '#fff'; ctx.font = '8px system-ui';
+    ctx.fillText(`${b.min}-${b.max}`, x+4, y+11);
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillText(b.rate, x+barW+8, y+11);
+  });
+}
+
+function drawEconDual() {
+  const r = getCtx('cv-econ-dual'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  // Energy counter
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(15,15,(w-40)/2,50);
+  ctx.fillStyle = '#0ff'; ctx.font = 'bold 18px system-ui'; ctx.fillText('⚡ 340', 30, 48);
+  ctx.fillStyle = '#088'; ctx.font = '9px system-ui'; ctx.fillText('From kills & abilities', 30, 58);
+
+  // Matter counter
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(w/2+5,15,(w-40)/2,50);
+  ctx.fillStyle = '#f80'; ctx.font = 'bold 18px system-ui'; ctx.fillText('◆ 520', w/2+20, 48);
+  ctx.fillStyle = '#864'; ctx.font = '9px system-ui'; ctx.fillText('Per wave bonus', w/2+20, 58);
+
+  // Tower costs showing both
+  ctx.fillStyle = '#888'; ctx.font = 'bold 10px system-ui'; ctx.fillText('TOWER COSTS:', 25, 90);
+
+  const towers = [
+    {name:'Pulse',energy:100,matter:50,color:'#0ff'},
+    {name:'Barrier',energy:30,matter:200,color:'#f80'},
+    {name:'Beam',energy:250,matter:80,color:'#a5f'},
+    {name:'Nova',energy:150,matter:150,color:'#5f5'},
+  ];
+  towers.forEach((t,i) => {
+    const x = 25+i*95, y = 102;
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x,y,85,80);
+    ctx.fillStyle = t.color; ctx.beginPath(); ctx.arc(x+42,y+25,14,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'; ctx.fillText(t.name,x+42,y+52);
+    ctx.fillStyle = '#0ff'; ctx.font = '9px system-ui'; ctx.fillText(`⚡${t.energy}`,x+42,y+65);
+    ctx.fillStyle = '#f80'; ctx.fillText(`◆${t.matter}`,x+42,y+75);
+    ctx.textAlign = 'left';
+  });
+}
+
+// ROGUELITE
+function drawRogTree() {
+  const r = getCtx('cv-rog-tree'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('PERMANENT UNLOCK TREE', 20, 25);
+  ctx.fillStyle = '#0ff'; ctx.font = '10px system-ui'; ctx.fillText('◈ Shards: 1,240', 20, 42);
+
+  // Tree nodes
+  const nodes = [
+    {x:w*0.1,y:h*0.45,name:'Start',done:true,children:[1,2]},
+    {x:w*0.3,y:h*0.3,name:'Arrow+',done:true,children:[3,4]},
+    {x:w*0.3,y:h*0.65,name:'Mage+',done:true,children:[5]},
+    {x:w*0.55,y:h*0.2,name:'Pierce',done:false,cost:200},
+    {x:w*0.55,y:h*0.42,name:'Speed',done:false,cost:300},
+    {x:w*0.55,y:h*0.65,name:'AoE+',done:false,cost:250},
+  ];
+
+  // Draw connections first
+  nodes.forEach((n,i) => {
+    if (n.children) n.children.forEach(ci => {
+      ctx.strokeStyle = nodes[ci].done ? '#0ff' : '#333';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(n.x+16,n.y); ctx.lineTo(nodes[ci].x-16,nodes[ci].y); ctx.stroke();
+    });
+  });
+
+  nodes.forEach(n => {
+    ctx.beginPath(); ctx.arc(n.x,n.y,14,0,Math.PI*2);
+    ctx.fillStyle = n.done ? '#0ff' : '#222'; ctx.fill();
+    ctx.strokeStyle = n.done ? '#0ff' : '#444'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = n.done ? '#000' : '#888'; ctx.font = 'bold 7px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(n.name, n.x, n.y+3);
+    if (n.cost) { ctx.fillStyle = '#FFD700'; ctx.font = '7px system-ui'; ctx.fillText(`◈${n.cost}`, n.x, n.y+24); }
+    ctx.textAlign = 'left';
+  });
+}
+
+function drawRogDeck() {
+  const r = getCtx('cv-rog-deck'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('DRAFT YOUR LOADOUT', 20, 25);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.fillText('Pick 6 towers for this run', 20, 42);
+
+  // Available cards
+  const all = [
+    {name:'Arrow',color:'#8B4513',picked:true},{name:'Mage',color:'#4169E1',picked:true},
+    {name:'Cannon',color:'#B22222',picked:true},{name:'Frost',color:'#00CED1',picked:true},
+    {name:'Tesla',color:'#FFD700',picked:true},{name:'Poison',color:'#2E8B57',picked:true},
+    {name:'Buff',color:'#FF69B4',picked:false},{name:'Sniper',color:'#778899',picked:false},
+    {name:'Bomb',color:'#FF6347',picked:false},{name:'Laser',color:'#00ff88',picked:false},
+  ];
+
+  all.forEach((c,i) => {
+    const col = i%5, row = Math.floor(i/5);
+    const x = 20+col*78, y = 58+row*68;
+    ctx.fillStyle = c.picked ? '#1a2a3a' : '#141418';
+    ctx.strokeStyle = c.picked ? '#0ff' : '#222';
+    ctx.lineWidth = c.picked ? 2 : 1;
+    ctx.beginPath(); ctx.roundRect(x,y,68,58,6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(x+34,y+22,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = c.picked ? '#fff' : '#555'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(c.name, x+34, y+48);
+    if (c.picked) { ctx.fillStyle = '#0ff'; ctx.font = '10px system-ui'; ctx.fillText('✓', x+58, y+14); }
+    ctx.textAlign = 'left';
+  });
+}
+
+function drawRogReward() {
+  const r = getCtx('cv-rog-reward'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('WAVE CLEAR — CHOOSE REWARD', w/2, 25);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui';
+  ctx.fillText('Pick 1 of 3', w/2, 42);
+  ctx.textAlign = 'left';
+
+  const rewards = [
+    {name:'New Tower:\nPlasma Orb',rarity:'RARE',color:'#4FC3F7',icon:'⬡'},
+    {name:'Relic:\n+15% Attack Speed',rarity:'EPIC',color:'#AB47BC',icon:'◈'},
+    {name:'Upgrade:\nArrow → Lv3',rarity:'COMMON',color:'#888',icon:'▲'},
+  ];
+
+  rewards.forEach((r,i) => {
+    const cw = (w-80)/3, x = 20+i*(cw+10), y = 55;
+    ctx.fillStyle = '#14141e'; ctx.strokeStyle = r.color+'66'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(x,y,cw,h-70,8); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = r.color; ctx.font = '28px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(r.icon, x+cw/2, y+40);
+
+    ctx.fillStyle = `${r.color}33`; ctx.fillRect(x+8,y+55,cw-16,16);
+    ctx.fillStyle = r.color; ctx.font = 'bold 8px system-ui';
+    ctx.fillText(r.rarity, x+cw/2, y+66);
+
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui';
+    const lines = r.name.split('\n');
+    ctx.fillText(lines[0], x+cw/2, y+90);
+    ctx.fillStyle = '#aaa'; ctx.font = '9px system-ui';
+    ctx.fillText(lines[1], x+cw/2, y+104);
+    ctx.textAlign = 'left';
+  });
+}
+
+// UI LAYOUT
+function drawUIBottom() {
+  const r = getCtx('cv-ui-bottom'); if (!r) return;
+  const { ctx, w, h } = r;
+  // Play area
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 20) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // Top bar
+  ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,w,28);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 10px system-ui'; ctx.fillText('⬡ 850', 10, 18);
+  ctx.fillStyle = '#f44'; ctx.fillText('♥ 18', 80, 18);
+  ctx.fillStyle = '#0ff'; ctx.fillText('Wave 12/30', 140, 18);
+  ctx.fillStyle = '#4CAF50'; ctx.fillText('▶ 1x', w-50, 18);
+
+  // Bottom bar
+  ctx.fillStyle = 'rgba(10,10,20,0.95)'; ctx.fillRect(0,h-55,w,55);
+  ctx.strokeStyle = '#0ff3'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0,h-55); ctx.lineTo(w,h-55); ctx.stroke();
+
+  // Tower slots in bottom bar
+  const towers = ['#ff5555','#5599ff','#55ff55','#ffaa00','#ff55aa','#aa55ff','#55ffff','#ff8800'];
+  towers.forEach((c,i) => {
+    const x = 12+i*48;
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x,h-48,40,40);
+    ctx.strokeStyle = c+'66'; ctx.lineWidth = 1; ctx.strokeRect(x,h-48,40,40);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x+20,h-28,10,0,Math.PI*2); ctx.fill();
+  });
+
+  // Placeholder towers/enemies on field
+  ctx.fillStyle = '#55f'; ctx.beginPath(); ctx.arc(w*0.3,h*0.35,8,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#f55'; ctx.beginPath(); ctx.arc(w*0.6,h*0.4,8,0,Math.PI*2); ctx.fill();
+  for (let i=0;i<4;i++) { ctx.fillStyle='#f55'; ctx.beginPath(); ctx.arc(w*0.5+i*12,h*0.5,4,0,Math.PI*2); ctx.fill(); }
+
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(w*0.3,h-70,120,14);
+  ctx.fillStyle='#0ff'; ctx.font='8px system-ui'; ctx.textAlign='center'; ctx.fillText('Tower bar always visible',w*0.3+60,h-60); ctx.textAlign='left';
+}
+
+function drawUISide() {
+  const r = getCtx('cv-ui-side'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = '#ffffff08'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w-120; x += 20) { ctx.beginPath(); ctx.moveTo(x,28); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 28; y < h; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w-120,y); ctx.stroke(); }
+
+  // Top bar
+  ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,w,28);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 10px system-ui'; ctx.fillText('⬡ 850  ♥ 18  Wave 12', 10, 18);
+
+  // Right panel
+  ctx.fillStyle = '#0e0e1a'; ctx.fillRect(w-125,28,125,h-28);
+  ctx.strokeStyle = '#0ff3'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(w-125,28); ctx.lineTo(w-125,h); ctx.stroke();
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.fillText('TOWERS', w-118, 48);
+
+  const towers = ['#ff5555','#5599ff','#55ff55','#ffaa00','#ff55aa','#aa55ff'];
+  towers.forEach((c,i) => {
+    const col = i%2, row = Math.floor(i/2);
+    const x = w-120+col*55, y = 55+row*50;
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(x,y,48,42);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x+24,y+18,10,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#888'; ctx.font = '7px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('100g', x+24, y+38); ctx.textAlign = 'left';
+  });
+
+  // Field content
+  ctx.fillStyle = '#55f'; ctx.beginPath(); ctx.arc((w-125)*0.4,h*0.4,8,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#f55'; ctx.beginPath(); ctx.arc((w-125)*0.6,h*0.5,8,0,Math.PI*2); ctx.fill();
+}
+
+function drawUIRadial() {
+  const r = getCtx('cv-ui-radial'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = '#ffffff06'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 20) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // Minimal top bar (just numbers)
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(5,5,180,20);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 9px system-ui'; ctx.fillText('⬡ 850', 10, 19);
+  ctx.fillStyle = '#f44'; ctx.fillText('♥ 18', 65, 19);
+  ctx.fillStyle = '#0ff'; ctx.fillText('W12', 105, 19);
+
+  // Radial menu in center
+  const cx = w*0.45, cy = h*0.5;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(cx,cy,55,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#0ff44'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx,cy,55,0,Math.PI*2); ctx.stroke();
+
+  const radialItems = ['#ff5555','#5599ff','#55ff55','#ffaa00','#ff55aa','#aa55ff'];
+  radialItems.forEach((c,i) => {
+    const a = Math.PI*2/6*i - Math.PI/2;
+    const ix = cx + 38*Math.cos(a), iy = cy + 38*Math.sin(a);
+    ctx.fillStyle = '#1a1a2e'; ctx.beginPath(); ctx.arc(ix,iy,14,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = c+'88'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(ix,iy,8,0,Math.PI*2); ctx.fill();
+  });
+
+  // Center cancel
+  ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('✕',cx,cy+4); ctx.textAlign = 'left';
+
+  // Annotation
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(w*0.6,h*0.3,w*0.35,30);
+  ctx.fillStyle='#0ff'; ctx.font='8px system-ui'; ctx.fillText('Right-click grid',w*0.62,h*0.3+12);
+  ctx.fillText('to open radial menu',w*0.62,h*0.3+23);
+  // Arrow
+  ctx.strokeStyle='#0ff'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(w*0.6,h*0.45); ctx.lineTo(cx+55,cy-10); ctx.stroke();
+}
+
+// TECH STACK
+function drawTechPhaser() {
+  const r = getCtx('cv-tech-phaser'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#2a2a3e'; ctx.fillRect(20,15,w-40,h-30);
+  ctx.fillStyle = '#6c5ce7'; ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Phaser 3', w/2, 50);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui';
+  ctx.fillText('Full 2D Game Framework', w/2, 68);
+
+  const features = ['Scene Manager','Physics','Tweens','Particles','Input','Audio','Tilemaps','Camera','Loader','Events'];
+  features.forEach((f,i) => {
+    const col = i%5, row = Math.floor(i/5);
+    const x = 35+col*((w-80)/5), y = 85+row*35;
+    ctx.fillStyle = '#6c5ce722'; ctx.fillRect(x,y,(w-100)/5,26);
+    ctx.strokeStyle = '#6c5ce744'; ctx.strokeRect(x,y,(w-100)/5,26);
+    ctx.fillStyle = '#b8b0e8'; ctx.font = '8px system-ui';
+    ctx.fillText(f, x+(w-100)/10, y+16);
+  });
+
+  ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 10px system-ui';
+  ctx.fillText('Bundle: ~1MB | Stars: 37k | TS Support', w/2, h-22);
+  ctx.textAlign = 'left';
+}
+
+function drawTechPixi() {
+  const r = getCtx('cv-tech-pixi'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#2a2a3e'; ctx.fillRect(20,15,w-40,h-30);
+  ctx.fillStyle = '#e91e63'; ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('PixiJS', w/2, 50);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui';
+  ctx.fillText('WebGL Renderer + You Build the Rest', w/2, 68);
+
+  // Pixi provides
+  ctx.fillStyle = '#e91e6322';
+  const pixiFeatures = ['Sprites','Containers','Filters','Text','Graphics'];
+  pixiFeatures.forEach((f,i) => {
+    const x = 30+i*((w-70)/5), y = 85;
+    ctx.fillRect(x,y,(w-90)/5,26);
+    ctx.strokeStyle = '#e91e6344'; ctx.strokeRect(x,y,(w-90)/5,26);
+    ctx.fillStyle = '#f48fb1'; ctx.font = '8px system-ui';
+    ctx.fillText(f, x+(w-90)/10, y+16); ctx.fillStyle = '#e91e6322';
+  });
+
+  // You add
+  ctx.fillStyle = '#333';
+  const addOns = ['Game Loop','Scenes','Physics','Audio (Howler)','Input'];
+  addOns.forEach((f,i) => {
+    const x = 30+i*((w-70)/5), y = 125;
+    ctx.fillRect(x,y,(w-90)/5,26);
+    ctx.strokeStyle = '#44444488'; ctx.strokeRect(x,y,(w-90)/5,26);
+    ctx.fillStyle = '#888'; ctx.font = '8px system-ui';
+    ctx.fillText(f, x+(w-90)/10, y+16); ctx.fillStyle = '#333';
+  });
+
+  ctx.fillStyle = '#e91e63'; ctx.font = '8px system-ui'; ctx.fillText('Included ↑', 40, 80);
+  ctx.fillStyle = '#666'; ctx.fillText('You build ↑', 40, 120);
+
+  ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 10px system-ui';
+  ctx.fillText('Bundle: ~300KB | Stars: 44k | Fastest 2D', w/2, h-22);
+  ctx.textAlign = 'left';
+}
+
+function drawTechRaw() {
+  const r = getCtx('cv-tech-raw'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle = '#2a2a3e'; ctx.fillRect(20,15,w-40,h-30);
+  ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Raw Canvas / WebGL', w/2, 50);
+  ctx.fillStyle = '#888'; ctx.font = '10px system-ui';
+  ctx.fillText('Zero Dependencies', w/2, 68);
+
+  // Code snippet representation
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(30,80,w-60,80);
+  ctx.font = '9px monospace'; ctx.textAlign = 'left';
+  const code = [
+    { text: 'const ctx = canvas.getContext("2d");', color: '#4CAF50' },
+    { text: 'function gameLoop(t) {', color: '#fff' },
+    { text: '  update(t);', color: '#4FC3F7' },
+    { text: '  render(ctx);', color: '#4FC3F7' },
+    { text: '  requestAnimationFrame(gameLoop);', color: '#FFD700' },
+    { text: '}', color: '#fff' },
+  ];
+  code.forEach((l,i) => { ctx.fillStyle = l.color; ctx.fillText(l.text, 40, 96+i*12); });
+
+  ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Bundle: ~0KB | Full Control | Most Work', w/2, h-22);
+  ctx.textAlign = 'left';
+}
+
+// INIT
+window.addEventListener('load', () => {
+  drawCyberPalette(); drawMidnightPalette(); drawSynthPalette(); drawMonoPalette();
+  drawEnemyShape(); drawEnemyColor(); drawEnemyComposite();
+  drawEconSimple(); drawEconInterest(); drawEconDual();
+  drawRogTree(); drawRogDeck(); drawRogReward();
+  drawUIBottom(); drawUISide(); drawUIRadial();
+  drawTechPhaser(); drawTechPixi(); drawTechRaw();
+});
+
+// Nav scroll highlight
+const sects = document.querySelectorAll('.section');
+const navAs = document.querySelectorAll('nav a');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sects.forEach(s => { if (window.scrollY >= s.offsetTop - 100) cur = s.id; });
+  navAs.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+cur));
+});
+</script>
+</body>
+</html>

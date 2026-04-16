@@ -1,0 +1,2475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tower Defense — Design Decisions</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    overflow-x: hidden;
+  }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 40px 20px;
+    text-align: center;
+    border-bottom: 2px solid #e94560;
+  }
+  header h1 {
+    font-size: 2.4rem;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  header p {
+    color: #a0a0b0;
+    font-size: 1.1rem;
+  }
+
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #12121a;
+    border-bottom: 1px solid #2a2a3a;
+    padding: 0 20px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+  }
+  nav a {
+    color: #888;
+    text-decoration: none;
+    padding: 14px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  nav a:hover, nav a.active {
+    color: #e94560;
+    border-bottom-color: #e94560;
+  }
+
+  .section {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 60px 20px;
+    border-bottom: 1px solid #1a1a2a;
+  }
+  .section h2 {
+    font-size: 1.8rem;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .section .subtitle {
+    color: #888;
+    font-size: 1rem;
+    margin-bottom: 40px;
+  }
+
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+  }
+
+  .option-card {
+    background: #14141e;
+    border: 2px solid #2a2a3a;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+  .option-card:hover {
+    border-color: #e94560;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(233, 69, 96, 0.15);
+  }
+  .option-card.selected {
+    border-color: #e94560;
+    box-shadow: 0 0 0 1px #e94560, 0 8px 30px rgba(233, 69, 96, 0.2);
+  }
+  .option-card.selected .card-header::after {
+    content: '✓ SELECTED';
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #e94560;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .card-header {
+    position: relative;
+    padding: 4px;
+  }
+  .card-header h3 {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.7);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    color: #fff;
+    backdrop-filter: blur(4px);
+  }
+
+  .card-canvas {
+    width: 100%;
+    height: 220px;
+    display: block;
+    border-radius: 8px;
+  }
+
+  .card-body {
+    padding: 20px;
+  }
+  .card-body .desc {
+    color: #b0b0c0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+
+  .pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .pros, .cons {
+    font-size: 0.82rem;
+    line-height: 1.7;
+  }
+  .pros h4 { color: #4ade80; margin-bottom: 6px; font-size: 0.75rem; letter-spacing: 1px; }
+  .cons h4 { color: #f87171; margin-bottom: 6px; font-size: 0.75rem; letter-spacing: 1px; }
+  .pros li, .cons li {
+    list-style: none;
+    padding-left: 16px;
+    position: relative;
+    color: #999;
+  }
+  .pros li::before { content: '+'; position: absolute; left: 0; color: #4ade80; font-weight: 700; }
+  .cons li::before { content: '−'; position: absolute; left: 0; color: #f87171; font-weight: 700; }
+
+  .recommendation {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: rgba(233, 69, 96, 0.1);
+    border-left: 3px solid #e94560;
+    font-size: 0.8rem;
+    color: #ccc;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Summary panel */
+  #summary {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1a1a2e;
+    border-top: 2px solid #e94560;
+    padding: 16px 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 200;
+    transform: translateY(100%);
+    transition: transform 0.3s;
+  }
+  #summary.visible { transform: translateY(0); }
+  #summary .choices {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  #summary .choice-tag {
+    background: #2a2a3e;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+  #summary .choice-tag span { color: #e94560; font-weight: 600; }
+  #summary button {
+    background: #e94560;
+    color: #fff;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #summary button:hover { background: #d63a55; }
+  #summary button:disabled { background: #555; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tower Defense — Design Decisions</h1>
+  <p>Click each option to select it. Visual previews show what each choice looks like in-game.</p>
+</header>
+
+<nav id="nav">
+  <a href="#art-style" class="active">Art Style</a>
+  <a href="#theme">Theme</a>
+  <a href="#map-type">Map Design</a>
+  <a href="#progression">Progression</a>
+  <a href="#towers">Tower Design</a>
+  <a href="#upgrades">Upgrades</a>
+  <a href="#modes">Game Modes</a>
+</nav>
+
+<!-- ==================== ART STYLE ==================== -->
+<div class="section" id="art-style">
+  <h2>1. Art Style</h2>
+  <p class="subtitle">Defines the entire visual identity of the game and impacts development complexity.</p>
+  <div class="options-grid" data-group="artStyle">
+
+    <div class="option-card" data-value="pixel">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-pixel"></canvas>
+        <h3>Pixel Art 2D</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Retro-inspired sprites on a tile grid. Charming, nostalgic aesthetic with strong visual clarity. Think Kingdom Rush or classic GBA-era games.</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>PROS</h4>
+            <ul>
+              <li>Assets are faster to create</li>
+              <li>Iconic, timeless look</li>
+              <li>Small file sizes</li>
+              <li>Easy to animate (frame-by-frame)</li>
+              <li>Large community asset packs available</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>CONS</h4>
+            <ul>
+              <li>Can look "indie" / less polished</li>
+              <li>Scaling requires nearest-neighbor</li>
+              <li>UI text clarity at low res</li>
+              <li>Hard to convey subtle effects</li>
+            </ul>
+          </div>
+        </div>
+        <div class="recommendation">Best for: Solo devs. Fast iteration, strong identity with minimal art skill.</div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="vector">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-vector"></canvas>
+        <h3>Vector / Clean 2D</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Smooth, scalable vector-style graphics with modern flat design. Clean lines, bold colors, and crisp UI. Think Bloons TD 6 or modern mobile games.</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>PROS</h4>
+            <ul>
+              <li>Resolution-independent (any screen)</li>
+              <li>Modern, professional feel</li>
+              <li>Great for UI/UX polish</li>
+              <li>Smooth tweened animations</li>
+              <li>Works beautifully on mobile</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>CONS</h4>
+            <ul>
+              <li>Requires stronger art/design skill</li>
+              <li>Assets take longer to polish</li>
+              <li>Can feel generic without style</li>
+              <li>Larger sprite sheets</li>
+            </ul>
+          </div>
+        </div>
+        <div class="recommendation">Best for: Polished commercial feel. Requires more art investment upfront.</div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="isometric">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-iso"></canvas>
+        <h3>2.5D Isometric</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Isometric projection with depth and layering. Gives a sense of 3D space while staying 2D. Think classic SimCity, Mindustry, or Clash of Clans.</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>PROS</h4>
+            <ul>
+              <li>Impressive visual depth</li>
+              <li>Natural tower height hierarchy</li>
+              <li>Stands out from flat 2D games</li>
+              <li>Great for terrain variety</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>CONS</h4>
+            <ul>
+              <li>Complex coordinate math (iso grid)</li>
+              <li>Sorting/depth ordering is hard</li>
+              <li>Every asset needs iso perspective</li>
+              <li>Click detection more complex</li>
+              <li>Significantly more dev time</li>
+            </ul>
+          </div>
+        </div>
+        <div class="recommendation">Best for: Visually ambitious projects with more dev time budget.</div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="3d">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-3d"></canvas>
+        <h3>3D (WebGL / Three.js)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Full 3D rendering with camera control, real lighting, and model-based assets. Most visually impressive option. Think Element TD or Sanctum.</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>PROS</h4>
+            <ul>
+              <li>Most visually impressive</li>
+              <li>Real lighting and shadows</li>
+              <li>Camera rotation/zoom</li>
+              <li>Easiest to add VFX (particles etc)</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>CONS</h4>
+            <ul>
+              <li>Needs 3D modeling skills or assets</li>
+              <li>Much higher performance cost</li>
+              <li>Longer dev cycle</li>
+              <li>Harder to optimize for low-end</li>
+              <li>Mobile support is tricky</li>
+            </ul>
+          </div>
+        </div>
+        <div class="recommendation">Best for: Teams with 3D experience, or if 3D is a core selling point.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== THEME ==================== -->
+<div class="section" id="theme">
+  <h2>2. Theme / Setting</h2>
+  <p class="subtitle">The world, enemies, and narrative wrapper for your game.</p>
+  <div class="options-grid" data-group="theme">
+
+    <div class="option-card" data-value="fantasy">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-fantasy"></canvas>
+        <h3>Classic Fantasy</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Medieval setting with castles, archers, mages, orcs, and dragons. The genre standard. Players immediately understand the world.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Instantly familiar to players</li>
+            <li>Tons of free/cheap art assets</li>
+            <li>Natural enemy variety (undead, beasts, demons)</li>
+            <li>Tower types write themselves (archer, mage, cannon)</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Very crowded market — hard to stand out</li>
+            <li>Can feel generic without unique twist</li>
+            <li>Player expectations are high (Kingdom Rush exists)</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="scifi">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-scifi"></canvas>
+        <h3>Sci-Fi / Space</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Lasers, drones, alien invasions, tech trees. Futuristic aesthetic with energy-based weapons and shield mechanics.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Unique tower mechanics (shields, EMP, hacking)</li>
+            <li>Great for particle effects and VFX</li>
+            <li>Less saturated than fantasy</li>
+            <li>Natural tech-tree progression</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Fewer available art assets</li>
+            <li>Sci-fi art is harder to execute well</li>
+            <li>Enemy variety requires more creativity</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="military">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-military"></canvas>
+        <h3>Modern Military</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Realistic-ish military setting. Gun turrets, missile launchers, tanks, infantry. Grounded aesthetic with ballistic mechanics.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Grounded, easy to understand</li>
+            <li>Real-world weapon references</li>
+            <li>Appeals to strategy/mil-sim fans</li>
+            <li>Clear damage type hierarchy</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Limited magical/fantasy mechanics</li>
+            <li>Narrower audience appeal</li>
+            <li>Realistic art is harder to do well</li>
+            <li>Less whimsy / charm</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="abstract">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-abstract"></canvas>
+        <h3>Abstract / Geometric</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Neon shapes, geometric enemies, minimalist design. Focus on mechanics over narrative. Think Geometry Wars meets tower defense.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>No complex art needed — shapes and colors</li>
+            <li>Unique aesthetic, stands out</li>
+            <li>Fastest to prototype</li>
+            <li>Focus entirely on gameplay</li>
+            <li>Neon/glow effects look great cheaply</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Harder to build emotional connection</li>
+            <li>No narrative hook</li>
+            <li>Can feel cold or sterile</li>
+            <li>Some players skip "abstract" games</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MAP TYPE ==================== -->
+<div class="section" id="map-type">
+  <h2>3. Map Design</h2>
+  <p class="subtitle">How enemies navigate and where towers can be placed — the core strategic layer.</p>
+  <div class="options-grid" data-group="mapType">
+
+    <div class="option-card" data-value="fixed">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-fixed"></canvas>
+        <h3>Fixed Paths</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Enemies follow pre-defined winding routes. Towers go in designated spots or zones beside the path. Strategy is about which tower goes where.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Easier to balance and design levels</li>
+            <li>No pathfinding needed (simpler code)</li>
+            <li>Each map is a hand-crafted puzzle</li>
+            <li>Clear strategic choices</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less player creativity/expression</li>
+            <li>Can feel rigid</li>
+            <li>Replay value depends on tower variety</li>
+            <li>Less emergent gameplay</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="openfield">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-openfield"></canvas>
+        <h3>Open Field / Maze Building</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Enemies pathfind from entry to exit. Players place towers anywhere to create mazes and force longer routes. Deep emergent strategy.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Massive player creativity</li>
+            <li>High replay value</li>
+            <li>Emergent strategies (maze optimization)</li>
+            <li>Players share maze designs</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Requires real-time pathfinding (A* / flow fields)</li>
+            <li>Harder to balance (maze exploits)</li>
+            <li>Must prevent complete path blocking</li>
+            <li>New players can feel overwhelmed</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="hybrid">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-hybrid"></canvas>
+        <h3>Hybrid</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Some maps have fixed paths with tower slots. Others open up for free placement. Combines hand-crafted design with player freedom.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Best of both worlds</li>
+            <li>Maps feel varied</li>
+            <li>Can ease players in (fixed → open)</li>
+            <li>Maximum design flexibility</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Must build both systems</li>
+            <li>Double the balance work</li>
+            <li>Inconsistent player expectations</li>
+            <li>More complex map editor needed</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROGRESSION ==================== -->
+<div class="section" id="progression">
+  <h2>4. Progression System</h2>
+  <p class="subtitle">What keeps players coming back — how does the game reward continued play?</p>
+  <div class="options-grid" data-group="progression">
+
+    <div class="option-card" data-value="inmatch">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-inmatch"></canvas>
+        <h3>In-Match Only</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">All progression happens within a single game. You earn gold, build towers, upgrade them. Next game starts from scratch. Pure skill-based.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Simplest to implement and balance</li>
+            <li>Every match is a fair start</li>
+            <li>No grind or pay-to-win concerns</li>
+            <li>Focus on pure strategy</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>No long-term motivation loop</li>
+            <li>Players may lose interest faster</li>
+            <li>No sense of "building something"</li>
+            <li>Less content to discover</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="meta">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-meta"></canvas>
+        <h3>Meta-Progression (Campaign)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Persistent unlocks across play sessions: new towers, global upgrades, achievements, star ratings. Campaign map with progression gating.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Strong long-term engagement loop</li>
+            <li>Players feel rewarded over time</li>
+            <li>Natural content drip (unlock new stuff)</li>
+            <li>Star ratings add replay incentive</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Must balance early vs late game</li>
+            <li>Risk of grindy feeling</li>
+            <li>More save-state management</li>
+            <li>Balance with unlocked towers is harder</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="roguelite">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-roguelite"></canvas>
+        <h3>Roguelite Elements</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Each run offers randomized tower/ability picks. Earn persistent currency for permanent upgrades between runs. Every run feels different.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Highest replay value</li>
+            <li>Each run is unique</li>
+            <li>Strong "one more run" pull</li>
+            <li>Trending genre combination</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Most complex to design and balance</li>
+            <li>Randomness can feel unfair</li>
+            <li>Needs large pool of towers/abilities</li>
+            <li>No hand-crafted campaign experience</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TOWERS ==================== -->
+<div class="section" id="towers">
+  <h2>5. Tower Roster Size</h2>
+  <p class="subtitle">How many distinct tower types to design, balance, and create art for.</p>
+  <div class="options-grid" data-group="towerCount">
+
+    <div class="option-card" data-value="small">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-towers-s"></canvas>
+        <h3>6–8 Towers</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Focused roster where every tower is deeply unique with distinct upgrade paths. Quality over quantity. Think chess — few pieces, deep strategy.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Easier to balance perfectly</li>
+            <li>Less art/animation work</li>
+            <li>Every tower feels essential</li>
+            <li>Faster to ship v1</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Less variety per match</li>
+            <li>Players see everything quickly</li>
+            <li>Fewer combo possibilities</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="medium">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-towers-m"></canvas>
+        <h3>12–15 Towers</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Sweet spot roster with good variety. Multiple damage types, support towers, area control, economy towers. Room for interesting synergies.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Good variety without overwhelm</li>
+            <li>Room for niche/specialist towers</li>
+            <li>Strong synergy potential</li>
+            <li>Balanceable with effort</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Moderate art investment</li>
+            <li>Some towers may feel redundant</li>
+            <li>Longer balance iteration</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="large">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-towers-l"></canvas>
+        <h3>20+ Towers</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Large roster for maximum variety and discovery. Works best with unlock systems so players don't see everything at once.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum variety and discovery</li>
+            <li>Unlock progression feels rewarding</li>
+            <li>More build diversity</li>
+            <li>Community theorycrafting</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Massive balance challenge</li>
+            <li>Many assets to create</li>
+            <li>Risk of filler/weak towers</li>
+            <li>UI/selection becomes complex</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== UPGRADES ==================== -->
+<div class="section" id="upgrades">
+  <h2>6. Tower Upgrade Structure</h2>
+  <p class="subtitle">How towers evolve during a match — the micro-decision layer.</p>
+  <div class="options-grid" data-group="upgradeStyle">
+
+    <div class="option-card" data-value="linear">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-upg-linear"></canvas>
+        <h3>Linear Tiers (1→2→3→4)</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Each tower upgrades straight through tiers. Each level is strictly better. Simple to understand, easy to balance. The classic approach.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Simplest to understand for players</li>
+            <li>Easiest to balance</li>
+            <li>Clear power curve</li>
+            <li>Clean UI — just a level number</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>No meaningful upgrade choices</li>
+            <li>Optimal play is always "upgrade everything"</li>
+            <li>Less strategic depth per tower</li>
+            <li>Can feel monotonous</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="branching">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-upg-branch"></canvas>
+        <h3>Branching Paths</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Each tower has 2–3 upgrade paths that diverge. Pick one branch to specialize. Same base tower, very different final forms. (Bloons TD style)</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Meaningful choices per tower</li>
+            <li>Multiplies effective tower variety</li>
+            <li>Replay value (try different branches)</li>
+            <li>Proven popular model</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>More complex UI needed</li>
+            <li>3x the upgrade content to design</li>
+            <li>Harder to balance all paths</li>
+            <li>One path often dominates</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="modular">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-upg-mod"></canvas>
+        <h3>Modular / Component-Based</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Towers have slots for swappable modules (damage type, firing pattern, special ability). Build your own tower configuration. Most player agency.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum player expression</li>
+            <li>Enormous combinatorial depth</li>
+            <li>Unique — few TD games do this well</li>
+            <li>Module drops can feed roguelite loop</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Very complex UI/UX challenge</li>
+            <li>Hardest to balance (combinatorial explosion)</li>
+            <li>Can overwhelm casual players</li>
+            <li>Most development work</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== GAME MODES ==================== -->
+<div class="section" id="modes">
+  <h2>7. Game Modes</h2>
+  <p class="subtitle">What players can actually do — the content structure of the game.</p>
+  <div class="options-grid" data-group="gameMode">
+
+    <div class="option-card" data-value="campaign">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-mode-camp"></canvas>
+        <h3>Campaign Only</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">A curated series of maps with increasing difficulty, star ratings, and unlock gates. Focused, polished experience with clear start and end.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Focused development effort</li>
+            <li>Hand-tuned difficulty curve</li>
+            <li>Clear sense of progress</li>
+            <li>Best for storytelling</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Finite content — players finish it</li>
+            <li>Less replay value</li>
+            <li>No sandbox/chill mode</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="campaign-endless">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-mode-end"></canvas>
+        <h3>Campaign + Endless</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">Campaign for structure and unlocks, plus an endless/survival mode on each map for high-score chasing and testing builds.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Campaign gives structure</li>
+            <li>Endless gives infinite replayability</li>
+            <li>Caters to both casual and hardcore</li>
+            <li>Endless mode is relatively cheap to add</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Endless needs separate balance pass</li>
+            <li>Late endless can expose balance issues</li>
+            <li>Need scaling system for waves</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option-card" data-value="campaign-endless-challenge">
+      <div class="card-header">
+        <canvas class="card-canvas" id="cv-mode-chal"></canvas>
+        <h3>Campaign + Endless + Challenges</h3>
+      </div>
+      <div class="card-body">
+        <p class="desc">All modes plus rotating challenge modifiers: limited towers, fast enemies, restricted budget, special rules. Keeps things fresh weekly.</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>PROS</h4><ul>
+            <li>Maximum content variety</li>
+            <li>Challenges create "events"</li>
+            <li>Tests player mastery</li>
+            <li>Community engagement driver</li>
+          </ul></div>
+          <div class="cons"><h4>CONS</h4><ul>
+            <li>Most content to build and maintain</li>
+            <li>Challenge modifiers need a rules engine</li>
+            <li>Rotating content needs a schedule system</li>
+            <li>Risk of spreading effort too thin</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Bar -->
+<div id="summary">
+  <div class="choices" id="choices-display"></div>
+  <button id="confirm-btn" disabled>Select all 7 to continue</button>
+</div>
+
+<script>
+// ============ SELECTION LOGIC ============
+const selections = {};
+const groupLabels = {
+  artStyle: 'Art Style',
+  theme: 'Theme',
+  mapType: 'Map Design',
+  progression: 'Progression',
+  towerCount: 'Towers',
+  upgradeStyle: 'Upgrades',
+  gameMode: 'Game Mode'
+};
+
+document.querySelectorAll('.option-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const group = card.closest('[data-group]').dataset.group;
+    const value = card.dataset.value;
+    // Deselect siblings
+    card.closest('.options-grid').querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selections[group] = { value, label: card.querySelector('h3').textContent };
+    updateSummary();
+  });
+});
+
+function updateSummary() {
+  const summary = document.getElementById('summary');
+  const display = document.getElementById('choices-display');
+  const btn = document.getElementById('confirm-btn');
+
+  display.innerHTML = '';
+  for (const [group, {label}] of Object.entries(selections)) {
+    display.innerHTML += `<div class="choice-tag"><span>${groupLabels[group]}:</span> ${label}</div>`;
+  }
+
+  const count = Object.keys(selections).length;
+  if (count > 0) summary.classList.add('visible');
+  btn.disabled = count < 7;
+  btn.textContent = count < 7 ? `${count}/7 selected — choose all to continue` : 'Confirm Selections ✓';
+}
+
+// ============ CANVAS RENDERERS ============
+
+function getCtx(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  c.width = c.offsetWidth * 2;
+  c.height = c.offsetHeight * 2;
+  const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
+  return { ctx, w: c.offsetWidth, h: c.offsetHeight };
+}
+
+function drawGrid(ctx, w, h, size, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= w; x += size) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y <= h; y += size) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+}
+
+// Pixel Art Style
+function drawPixelDemo() {
+  const r = getCtx('cv-pixel'); if (!r) return;
+  const { ctx, w, h } = r;
+  const S = 16;
+
+  // Grass background
+  for (let x = 0; x < w; x += S) {
+    for (let y = 0; y < h; y += S) {
+      const g = 100 + Math.floor(Math.random() * 40);
+      ctx.fillStyle = `rgb(40, ${g}, 30)`;
+      ctx.fillRect(x, y, S, S);
+    }
+  }
+
+  // Path
+  ctx.fillStyle = '#8B7355';
+  const path = [[0,3],[1,3],[2,3],[3,3],[3,4],[3,5],[3,6],[4,6],[5,6],[6,6],[7,6],[7,5],[7,4],[7,3],[8,3],[9,3],[10,3],[11,3],[11,4],[11,5],[11,6],[11,7],[11,8],[12,8],[13,8],[14,8],[15,8],[16,8],[17,8],[18,8],[19,8],[20,8]];
+  path.forEach(([x,y]) => { ctx.fillRect(x*S, y*S, S, S); ctx.fillStyle = '#7A6548'; ctx.fillRect(x*S+1, y*S+1, S-2, S-2); ctx.fillStyle = '#8B7355'; });
+
+  // Pixel towers
+  function drawPixelTower(x, y, color1, color2) {
+    ctx.fillStyle = '#555';
+    ctx.fillRect(x-8, y-4, 16, 16);
+    ctx.fillStyle = color1;
+    ctx.fillRect(x-6, y-12, 12, 12);
+    ctx.fillStyle = color2;
+    ctx.fillRect(x-4, y-18, 8, 8);
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(x-2, y-22, 4, 4);
+  }
+  drawPixelTower(2*S, 7*S, '#8B4513', '#A0522D');
+  drawPixelTower(6*S, 4*S, '#4169E1', '#6495ED');
+  drawPixelTower(10*S, 2*S, '#8B0000', '#B22222');
+  drawPixelTower(14*S, 6*S, '#2E8B57', '#3CB371');
+
+  // Pixel enemies
+  function drawPixelEnemy(x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x-5, y-5, 10, 10);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x-3, y-3, 3, 3);
+    ctx.fillRect(x+1, y-3, 3, 3);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x-2, y-2, 2, 2);
+    ctx.fillRect(x+1, y-2, 2, 2);
+  }
+  drawPixelEnemy(5*S, 6*S+8, '#c44');
+  drawPixelEnemy(6*S+4, 6*S+8, '#c44');
+  drawPixelEnemy(8*S, 3*S+8, '#a4a');
+
+  // UI overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, w, 24);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText('♥♥♥  Gold: 350  Wave: 5/20', 8, 16);
+}
+
+// Vector Style
+function drawVectorDemo() {
+  const r = getCtx('cv-vector'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Clean gradient bg
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#2d5a27');
+  grad.addColorStop(1, '#1e3d19');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Smooth path
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.35);
+  ctx.bezierCurveTo(w*0.2, h*0.35, w*0.15, h*0.7, w*0.35, h*0.7);
+  ctx.bezierCurveTo(w*0.5, h*0.7, w*0.5, h*0.25, w*0.65, h*0.25);
+  ctx.bezierCurveTo(w*0.8, h*0.25, w*0.75, h*0.8, w, h*0.8);
+  ctx.strokeStyle = '#c9a96e';
+  ctx.lineWidth = 28;
+  ctx.stroke();
+  ctx.strokeStyle = '#b89558';
+  ctx.lineWidth = 22;
+  ctx.stroke();
+
+  // Vector towers (smooth circles with clean shapes)
+  function drawVectorTower(x, y, color, radius) {
+    // Shadow
+    ctx.beginPath();
+    ctx.ellipse(x, y+radius+4, radius*0.8, 4, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fill();
+    // Base
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Range ring
+    ctx.beginPath();
+    ctx.arc(x, y, radius*4, 0, Math.PI*2);
+    ctx.strokeStyle = `${color}44`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  drawVectorTower(w*0.12, h*0.55, '#4FC3F7', 14);
+  drawVectorTower(w*0.42, h*0.48, '#FF7043', 16);
+  drawVectorTower(w*0.58, h*0.45, '#AB47BC', 12);
+  drawVectorTower(w*0.78, h*0.55, '#66BB6A', 15);
+
+  // Smooth enemies (rounded rects)
+  function drawVectorEnemy(x, y, color, size) {
+    ctx.beginPath();
+    ctx.roundRect(x-size/2, y-size/2, size, size, 4);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Health bar
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x-size/2, y-size/2-6, size, 4);
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillRect(x-size/2, y-size/2-6, size*0.7, 4);
+  }
+  drawVectorEnemy(w*0.3, h*0.69, '#EF5350', 16);
+  drawVectorEnemy(w*0.34, h*0.68, '#EF5350', 16);
+  drawVectorEnemy(w*0.55, h*0.35, '#7E57C2', 20);
+
+  // Clean UI bar
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.roundRect = ctx.roundRect || function(){};
+  ctx.fillRect(0, 0, w, 28);
+  ctx.fillStyle = '#fff';
+  ctx.font = '600 12px system-ui';
+  ctx.fillText('❤ 20   💰 450   🌊 Wave 8 / 25', 12, 18);
+}
+
+// Isometric Style
+function drawIsoDemo() {
+  const r = getCtx('cv-iso'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  ctx.fillStyle = '#1a2a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  const tileW = 48, tileH = 24;
+  const ox = w/2, oy = 30;
+
+  function isoToScreen(ix, iy) {
+    return {
+      x: ox + (ix - iy) * tileW/2,
+      y: oy + (ix + iy) * tileH/2
+    };
+  }
+
+  function drawIsoTile(ix, iy, topColor, sideColor, height) {
+    const { x, y } = isoToScreen(ix, iy);
+    const hw = tileW/2, hh = tileH/2;
+
+    // Top face
+    ctx.beginPath();
+    ctx.moveTo(x, y - height);
+    ctx.lineTo(x + hw, y + hh - height);
+    ctx.lineTo(x, y + tileH - height);
+    ctx.lineTo(x - hw, y + hh - height);
+    ctx.closePath();
+    ctx.fillStyle = topColor;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    if (height > 0) {
+      // Right face
+      ctx.beginPath();
+      ctx.moveTo(x + hw, y + hh - height);
+      ctx.lineTo(x, y + tileH - height);
+      ctx.lineTo(x, y + tileH);
+      ctx.lineTo(x + hw, y + hh);
+      ctx.closePath();
+      ctx.fillStyle = sideColor;
+      ctx.fill();
+
+      // Left face
+      ctx.beginPath();
+      ctx.moveTo(x - hw, y + hh - height);
+      ctx.lineTo(x, y + tileH - height);
+      ctx.lineTo(x, y + tileH);
+      ctx.lineTo(x - hw, y + hh);
+      ctx.closePath();
+      ctx.fillStyle = `${sideColor}cc`;
+      ctx.fill();
+    }
+  }
+
+  // Ground
+  for (let ix = 0; ix < 8; ix++) {
+    for (let iy = 0; iy < 8; iy++) {
+      const isPath = (ix === 0 || (ix <= 3 && iy === 3) || (ix === 3 && iy >= 3 && iy <= 5) || (ix >= 3 && ix <= 6 && iy === 5) || (ix === 6 && iy >= 5));
+      drawIsoTile(ix, iy, isPath ? '#a08860' : '#3a6a2a', isPath ? '#887040' : '#2a5a1a', isPath ? 0 : 2);
+    }
+  }
+
+  // Iso towers
+  function drawIsoTower(ix, iy, color, h) {
+    const { x, y } = isoToScreen(ix, iy);
+    drawIsoTile(ix, iy, color, '#333', h);
+    // Turret
+    ctx.beginPath();
+    ctx.arc(x, y - h + tileH/2 - 4, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#ddd';
+    ctx.fill();
+  }
+  drawIsoTower(1, 1, '#4477aa', 20);
+  drawIsoTower(2, 5, '#aa4444', 25);
+  drawIsoTower(5, 3, '#44aa44', 18);
+  drawIsoTower(5, 7, '#aa44aa', 22);
+}
+
+// 3D Style
+function draw3DDemo() {
+  const r = getCtx('cv-3d'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Gradient sky
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, '#1a1a3e');
+  sky.addColorStop(1, '#2a4a2a');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  // 3D perspective ground grid
+  ctx.strokeStyle = 'rgba(100, 200, 100, 0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 20; i++) {
+    const y = h * 0.35 + i * 12;
+    const spread = (i / 20) * w * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(w/2 - spread, y);
+    ctx.lineTo(w/2 + spread, y);
+    ctx.stroke();
+  }
+  for (let i = -8; i <= 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(w/2 + i*3, h*0.35);
+    ctx.lineTo(w/2 + i*50, h);
+    ctx.stroke();
+  }
+
+  // 3D towers (pseudo-3D with perspective)
+  function draw3DTower(x, y, scale, color) {
+    const bw = 24*scale, bh = 50*scale;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x, y+2, bw*0.8, 6*scale, 0, 0, Math.PI*2);
+    ctx.fill();
+    // Body
+    const grad = ctx.createLinearGradient(x-bw/2, 0, x+bw/2, 0);
+    grad.addColorStop(0, '#333');
+    grad.addColorStop(0.3, color);
+    grad.addColorStop(0.7, color);
+    grad.addColorStop(1, '#222');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x-bw/2, y-bh, bw, bh);
+    // Top
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y-bh, bw/2, 6*scale, 0, 0, Math.PI*2);
+    ctx.fill();
+    // Glow
+    const glow = ctx.createRadialGradient(x, y-bh*0.7, 0, x, y-bh*0.7, bw*2);
+    glow.addColorStop(0, `${color}44`);
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x-bw*2, y-bh*1.5, bw*4, bh*2);
+    // Beam
+    ctx.strokeStyle = `${color}88`;
+    ctx.lineWidth = 2*scale;
+    ctx.beginPath();
+    ctx.moveTo(x, y-bh);
+    ctx.lineTo(x+60*scale, y-bh-20*scale);
+    ctx.stroke();
+  }
+  draw3DTower(w*0.2, h*0.75, 1.2, '#4FC3F7');
+  draw3DTower(w*0.45, h*0.6, 1.0, '#FF5722');
+  draw3DTower(w*0.65, h*0.7, 1.1, '#AB47BC');
+  draw3DTower(w*0.85, h*0.82, 1.3, '#66BB6A');
+
+  // Enemies
+  for (let i = 0; i < 5; i++) {
+    const ex = w*0.3 + i*25, ey = h*0.65 + i*5;
+    ctx.fillStyle = '#ff4444';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#ff6666';
+    ctx.beginPath();
+    ctx.arc(ex, ey-1, 4, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Lens flare
+  const flare = ctx.createRadialGradient(w*0.8, h*0.1, 0, w*0.8, h*0.1, 100);
+  flare.addColorStop(0, 'rgba(255,255,200,0.3)');
+  flare.addColorStop(1, 'transparent');
+  ctx.fillStyle = flare;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// ============ THEME DEMOS ============
+function drawFantasyDemo() {
+  const r = getCtx('cv-fantasy'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Green hills
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#87CEEB');
+  grad.addColorStop(0.4, '#5a9');
+  grad.addColorStop(1, '#2a5a1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Castle
+  ctx.fillStyle = '#666';
+  ctx.fillRect(w*0.7, h*0.2, 40, 60);
+  ctx.fillRect(w*0.7-10, h*0.2-15, 15, 25);
+  ctx.fillRect(w*0.7+35, h*0.2-15, 15, 25);
+  // Battlements
+  ctx.fillStyle = '#777';
+  for (let i = 0; i < 5; i++) ctx.fillRect(w*0.7-12+i*14, h*0.2-20, 8, 8);
+  // Flag
+  ctx.fillStyle = '#e33';
+  ctx.beginPath();
+  ctx.moveTo(w*0.7+20, h*0.2-30);
+  ctx.lineTo(w*0.7+40, h*0.2-22);
+  ctx.lineTo(w*0.7+20, h*0.2-14);
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w*0.7+20, h*0.2-30);
+  ctx.lineTo(w*0.7+20, h*0.2);
+  ctx.stroke();
+
+  // Path
+  ctx.fillStyle = '#a08060';
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.65);
+  ctx.quadraticCurveTo(w*0.3, h*0.5, w*0.5, h*0.65);
+  ctx.quadraticCurveTo(w*0.7, h*0.8, w, h*0.7);
+  ctx.lineTo(w, h*0.78);
+  ctx.quadraticCurveTo(w*0.7, h*0.88, w*0.5, h*0.73);
+  ctx.quadraticCurveTo(w*0.3, h*0.58, 0, h*0.73);
+  ctx.fill();
+
+  // Fantasy towers
+  // Archer tower
+  ctx.fillStyle = '#8B4513';
+  ctx.fillRect(w*0.18, h*0.42, 18, 24);
+  ctx.fillStyle = '#A0522D';
+  ctx.beginPath();
+  ctx.moveTo(w*0.18-2, h*0.42);
+  ctx.lineTo(w*0.18+9, h*0.3);
+  ctx.lineTo(w*0.18+20, h*0.42);
+  ctx.fill();
+
+  // Mage tower
+  ctx.fillStyle = '#4169E1';
+  ctx.fillRect(w*0.4, h*0.38, 16, 28);
+  ctx.fillStyle = '#6495ED';
+  ctx.beginPath();
+  ctx.moveTo(w*0.4+8, h*0.24);
+  ctx.lineTo(w*0.4+20, h*0.38);
+  ctx.lineTo(w*0.4-4, h*0.38);
+  ctx.fill();
+  // Magic sparkle
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.arc(w*0.4+8, h*0.28, 4, 0, Math.PI*2);
+  ctx.fill();
+
+  // Orcs
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = '#5a5';
+    ctx.beginPath();
+    ctx.arc(w*0.25+i*20, h*0.63, 7, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#383';
+    ctx.fillRect(w*0.25+i*20-5, h*0.63+5, 10, 8);
+  }
+
+  // Dragon silhouette
+  ctx.fillStyle = 'rgba(139,0,0,0.3)';
+  ctx.beginPath();
+  ctx.moveTo(w*0.85, h*0.08);
+  ctx.quadraticCurveTo(w*0.9, h*0.05, w*0.95, h*0.12);
+  ctx.quadraticCurveTo(w*0.92, h*0.15, w*0.88, h*0.12);
+  ctx.quadraticCurveTo(w*0.86, h*0.14, w*0.83, h*0.1);
+  ctx.fill();
+}
+
+function drawSciFiDemo() {
+  const r = getCtx('cv-scifi'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Space bg
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, w, h);
+  // Stars
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.8})`;
+    ctx.fillRect(Math.random()*w, Math.random()*h*0.5, 1.5, 1.5);
+  }
+  // Planet surface
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, h*0.5, w, h*0.5);
+  // Hex grid
+  ctx.strokeStyle = '#00ffff22';
+  ctx.lineWidth = 0.5;
+  const hexS = 20;
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 20; col++) {
+      const x = col * hexS * 1.5 + (row%2)*hexS*0.75;
+      const y = h*0.5 + row * hexS * 0.9;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI/3 * i - Math.PI/6;
+        const px = x + hexS*0.5*Math.cos(angle);
+        const py = y + hexS*0.5*Math.sin(angle);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  // Laser tower
+  function drawLaserTower(x, y, color) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x-10, y-5, 20, 20);
+    ctx.fillStyle = color;
+    ctx.fillRect(x-6, y-20, 12, 18);
+    // Antenna
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y-20);
+    ctx.lineTo(x, y-30);
+    ctx.stroke();
+    // Glow
+    const g = ctx.createRadialGradient(x, y-25, 0, x, y-25, 30);
+    g.addColorStop(0, `${color}66`);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y-25, 30, 0, Math.PI*2);
+    ctx.fill();
+  }
+  drawLaserTower(w*0.15, h*0.7, '#00ffff');
+  drawLaserTower(w*0.45, h*0.6, '#ff00ff');
+  drawLaserTower(w*0.75, h*0.7, '#ffff00');
+
+  // Laser beam
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(w*0.15, h*0.7-30);
+  ctx.lineTo(w*0.35, h*0.65);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Alien enemies
+  for (let i = 0; i < 5; i++) {
+    const ex = w*0.3+i*22, ey = h*0.65+Math.sin(i)*8;
+    ctx.fillStyle = '#a0f';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#f0f';
+    ctx.fillRect(ex-3, ey-8, 6, 3);
+  }
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,20,40,0.8)';
+  ctx.fillRect(0, 0, w, 26);
+  ctx.strokeStyle = '#00ffff44';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, w, 26);
+  ctx.fillStyle = '#0ff';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText('SHIELD: ████████░░  CREDITS: 2,450  WAVE: 12/30', 10, 17);
+}
+
+function drawMilitaryDemo() {
+  const r = getCtx('cv-military'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Desert/urban bg
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#c4a882');
+  grad.addColorStop(1, '#8a7660');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Road
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, h*0.4, w, h*0.2);
+  ctx.setLineDash([20, 15]);
+  ctx.strokeStyle = '#ff0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.5);
+  ctx.lineTo(w, h*0.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Gun turret
+  function drawTurret(x, y, angle) {
+    ctx.fillStyle = '#4a5a4a';
+    ctx.fillRect(x-12, y-12, 24, 24);
+    ctx.fillStyle = '#3a4a3a';
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI*2);
+    ctx.fill();
+    // Barrel
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x+Math.cos(angle)*22, y+Math.sin(angle)*22);
+    ctx.stroke();
+  }
+  drawTurret(w*0.15, h*0.25, 0.5);
+  drawTurret(w*0.4, h*0.72, -0.8);
+  drawTurret(w*0.65, h*0.25, 0.3);
+
+  // Missile launcher
+  ctx.fillStyle = '#556';
+  ctx.fillRect(w*0.85-15, h*0.7-15, 30, 30);
+  ctx.fillStyle = '#445';
+  ctx.fillRect(w*0.85-8, h*0.7-30, 6, 20);
+  ctx.fillRect(w*0.85+2, h*0.7-30, 6, 20);
+
+  // Vehicles (enemies)
+  for (let i = 0; i < 3; i++) {
+    const ex = w*0.25+i*60;
+    ctx.fillStyle = '#a33';
+    ctx.fillRect(ex-12, h*0.47, 24, 12);
+    ctx.fillStyle = '#833';
+    ctx.fillRect(ex-8, h*0.43, 16, 8);
+    // Wheels
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(ex-8, h*0.59, 4, 0, Math.PI*2);
+    ctx.arc(ex+8, h*0.59, 4, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Sandbags
+  ctx.fillStyle = '#a09070';
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.ellipse(w*0.5+i*12, h*0.36, 7, 4, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawAbstractDemo() {
+  const r = getCtx('cv-abstract'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  ctx.fillStyle = '#08080f';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#ffffff08';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  // Neon path
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = '#0ff';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.moveTo(0, h/2);
+  ctx.lineTo(w*0.2, h/2);
+  ctx.lineTo(w*0.2, h*0.2);
+  ctx.lineTo(w*0.6, h*0.2);
+  ctx.lineTo(w*0.6, h*0.8);
+  ctx.lineTo(w*0.8, h*0.8);
+  ctx.lineTo(w*0.8, h*0.4);
+  ctx.lineTo(w, h*0.4);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Geometric towers
+  function drawGeoTower(x, y, sides, color, size) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) {
+      const angle = (Math.PI*2/sides)*i - Math.PI/2;
+      const px = x + size*Math.cos(angle);
+      const py = y + size*Math.sin(angle);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.fillStyle = `${color}33`;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Pulsing ring
+    ctx.strokeStyle = `${color}22`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, size*3, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  drawGeoTower(w*0.1, h*0.35, 3, '#ff0055', 14); // triangle
+  drawGeoTower(w*0.35, h*0.4, 4, '#00ff88', 12); // square
+  drawGeoTower(w*0.5, h*0.5, 6, '#ffaa00', 13); // hexagon
+  drawGeoTower(w*0.72, h*0.6, 8, '#aa55ff', 11); // octagon
+
+  // Geometric enemies (circles with trails)
+  for (let i = 0; i < 6; i++) {
+    const ex = w*0.62 - i*12, ey = h*0.8;
+    ctx.fillStyle = `rgba(255, 0, 100, ${0.8-i*0.12})`;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 5-i*0.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Beam
+  ctx.strokeStyle = '#ff0055';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#ff0055';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(w*0.1, h*0.35);
+  ctx.lineTo(w*0.62, h*0.8);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+// ============ MAP TYPE DEMOS ============
+function drawFixedPathDemo() {
+  const r = getCtx('cv-fixed'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Grass
+  ctx.fillStyle = '#2a5a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Winding path
+  ctx.fillStyle = '#8a7050';
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.3);
+  ctx.lineTo(w*0.3, h*0.3);
+  ctx.lineTo(w*0.3, h*0.7);
+  ctx.lineTo(w*0.6, h*0.7);
+  ctx.lineTo(w*0.6, h*0.3);
+  ctx.lineTo(w*0.85, h*0.3);
+  ctx.lineTo(w*0.85, h*0.85);
+  ctx.lineTo(w, h*0.85);
+  ctx.lineTo(w, h*0.95);
+  ctx.lineTo(w*0.85-10, h*0.95);
+  ctx.lineTo(w*0.85-10, h*0.4);
+  ctx.lineTo(w*0.6+10, h*0.4);
+  ctx.lineTo(w*0.6+10, h*0.8);
+  ctx.lineTo(w*0.3-10, h*0.8);
+  ctx.lineTo(w*0.3-10, h*0.4);
+  ctx.lineTo(0, h*0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tower placement spots (fixed circles)
+  function drawSlot(x, y, hasTower) {
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI*2);
+    ctx.fillStyle = hasTower ? '#444' : 'rgba(255,255,255,0.1)';
+    ctx.fill();
+    ctx.strokeStyle = hasTower ? '#666' : 'rgba(255,255,255,0.2)';
+    ctx.setLineDash(hasTower ? [] : [3, 3]);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (hasTower) {
+      ctx.fillStyle = '#4FC3F7';
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  drawSlot(w*0.15, h*0.18, true);
+  drawSlot(w*0.15, h*0.55, false);
+  drawSlot(w*0.42, h*0.55, true);
+  drawSlot(w*0.42, h*0.18, false);
+  drawSlot(w*0.72, h*0.55, true);
+  drawSlot(w*0.72, h*0.18, false);
+
+  // Label
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(w*0.25, h-30, w*0.5, 22);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('▲ Fixed tower slots beside the path', w/2, h-14);
+  ctx.textAlign = 'left';
+}
+
+function drawOpenFieldDemo() {
+  const r = getCtx('cv-openfield'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Grass
+  ctx.fillStyle = '#2a5a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid overlay
+  const gridS = 24;
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += gridS) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += gridS) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  // Entry/exit markers
+  ctx.fillStyle = '#4CAF50';
+  ctx.beginPath(); ctx.moveTo(0, h*0.4); ctx.lineTo(15, h*0.5); ctx.lineTo(0, h*0.6); ctx.fill();
+  ctx.fillStyle = '#f44336';
+  ctx.beginPath(); ctx.moveTo(w, h*0.4); ctx.lineTo(w-15, h*0.5); ctx.lineTo(w, h*0.6); ctx.fill();
+
+  // Player-placed maze towers
+  const maze = [
+    [2,2],[2,3],[2,4],[2,5],[2,6],[2,7],
+    [4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],
+    [6,2],[6,3],[6,4],[6,5],[6,6],[6,7],
+    [8,1],[8,2],[8,3],[8,4],[8,5],[8,6],[8,7],[8,8],
+    [10,2],[10,3],[10,4],[10,5],[10,6],[10,7],
+    [12,1],[12,2],[12,3],[12,4],[12,5],[12,6],[12,7],[12,8],
+  ];
+  maze.forEach(([gx, gy]) => {
+    ctx.fillStyle = '#556';
+    ctx.fillRect(gx*gridS+1, gy*gridS+1, gridS-2, gridS-2);
+  });
+
+  // Pathfinding line (dotted)
+  ctx.strokeStyle = '#ff0';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(8, h*0.5);
+  ctx.lineTo(2*gridS, h*0.5);
+  ctx.lineTo(2*gridS, 1.5*gridS);
+  ctx.lineTo(3.5*gridS, 1.5*gridS);
+  ctx.lineTo(3.5*gridS, 8.5*gridS);
+  ctx.lineTo(5.5*gridS, 8.5*gridS);
+  ctx.lineTo(5.5*gridS, 1.5*gridS);
+  ctx.lineTo(7.5*gridS, 1.5*gridS);
+  ctx.lineTo(7.5*gridS, 8.5*gridS);
+  ctx.lineTo(9.5*gridS, 8.5*gridS);
+  ctx.lineTo(9.5*gridS, 1.5*gridS);
+  ctx.lineTo(11.5*gridS, 1.5*gridS);
+  ctx.lineTo(11.5*gridS, 8.5*gridS);
+  ctx.lineTo(w-8, h*0.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Enemies following path
+  ctx.fillStyle = '#e44';
+  [[3*gridS, 5*gridS], [3.2*gridS, 6*gridS], [3.5*gridS, 7.5*gridS]].forEach(([ex,ey]) => {
+    ctx.beginPath(); ctx.arc(ex, ey, 5, 0, Math.PI*2); ctx.fill();
+  });
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(w*0.2, h-30, w*0.6, 22);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('▲ Players build mazes — enemies pathfind through', w/2, h-14);
+  ctx.textAlign = 'left';
+}
+
+function drawHybridDemo() {
+  const r = getCtx('cv-hybrid'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  // Split view
+  ctx.fillStyle = '#2a5a1a';
+  ctx.fillRect(0, 0, w/2-2, h);
+  ctx.fillStyle = '#1a3a2a';
+  ctx.fillRect(w/2+2, 0, w/2-2, h);
+
+  // Divider
+  ctx.fillStyle = '#444';
+  ctx.fillRect(w/2-2, 0, 4, h);
+
+  // Left: fixed path section
+  ctx.fillStyle = '#8a7050';
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.45);
+  ctx.lineTo(w*0.15, h*0.45);
+  ctx.lineTo(w*0.15, h*0.75);
+  ctx.lineTo(w*0.35, h*0.75);
+  ctx.lineTo(w*0.35, h*0.45);
+  ctx.lineTo(w*0.48, h*0.45);
+  ctx.lineTo(w*0.48, h*0.55);
+  ctx.lineTo(w*0.35+10, h*0.55);
+  ctx.lineTo(w*0.35+10, h*0.85);
+  ctx.lineTo(w*0.15-10, h*0.85);
+  ctx.lineTo(w*0.15-10, h*0.55);
+  ctx.lineTo(0, h*0.55);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(10, 8, 100, 18);
+  ctx.fillStyle = '#4FC3F7';
+  ctx.font = 'bold 10px system-ui';
+  ctx.fillText('FIXED PATH', 18, 21);
+
+  // Right: open field section
+  const gridS = 18;
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let x = w/2+2; x < w; x += gridS) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += gridS) { ctx.beginPath(); ctx.moveTo(w/2+2, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  // Some maze towers on right side
+  const rightMaze = [[1,3],[1,4],[1,5],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6],[5,3],[5,4],[5,5],[7,1],[7,2],[7,3],[7,4],[7,5],[7,6]];
+  rightMaze.forEach(([gx, gy]) => {
+    ctx.fillStyle = '#556';
+    ctx.fillRect(w/2+4+gx*gridS+1, gy*gridS+30, gridS-2, gridS-2);
+  });
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(w/2+12, 8, 110, 18);
+  ctx.fillStyle = '#FF7043';
+  ctx.font = 'bold 10px system-ui';
+  ctx.fillText('OPEN FIELD', w/2+22, 21);
+}
+
+// ============ PROGRESSION DEMOS ============
+function drawInMatchDemo() {
+  const r = getCtx('cv-inmatch'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, w, h);
+
+  // Gold counter going up
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(20, 20, w-40, 40);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 18px system-ui';
+  ctx.fillText('💰 Gold: 1,250', 35, 48);
+  ctx.fillStyle = '#4CAF50';
+  ctx.font = '12px system-ui';
+  ctx.fillText('+50 per kill', 200, 48);
+
+  // Tower shop panel
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(20, 75, w-40, h-95);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('BUILD & UPGRADE IN-MATCH', 35, 95);
+
+  // Tower cards
+  const towers = [
+    { name: 'Arrow', cost: 100, color: '#8B4513', level: 'Lv 3' },
+    { name: 'Mage', cost: 200, color: '#4169E1', level: 'Lv 2' },
+    { name: 'Cannon', cost: 350, color: '#B22222', level: 'Lv 1' },
+    { name: 'Frost', cost: 250, color: '#00CED1', level: 'NEW' },
+  ];
+  towers.forEach((t, i) => {
+    const x = 35 + i*(w-70)/4;
+    const y = 110;
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(x, y, (w-90)/4, 90);
+    ctx.fillStyle = t.color;
+    ctx.beginPath();
+    ctx.arc(x + (w-90)/8, y+35, 18, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.name, x+(w-90)/8, y+65);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '9px system-ui';
+    ctx.fillText(`${t.cost}g`, x+(w-90)/8, y+78);
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillText(t.level, x+(w-90)/8, y+88);
+    ctx.textAlign = 'left';
+  });
+
+  ctx.fillStyle = '#888';
+  ctx.font = '11px system-ui';
+  ctx.fillText('Each match starts fresh — no persistent upgrades', 35, h-15);
+}
+
+function drawMetaDemo() {
+  const r = getCtx('cv-meta'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, w, h);
+
+  // Campaign map with nodes
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px system-ui';
+  ctx.fillText('CAMPAIGN MAP', 20, 28);
+
+  // Path connecting levels
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(50, 70);
+  ctx.lineTo(130, 90);
+  ctx.lineTo(210, 60);
+  ctx.lineTo(290, 85);
+  ctx.lineTo(370, 55);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Level nodes
+  const levels = [
+    { x: 50, y: 70, stars: 3, name: '1-1', done: true },
+    { x: 130, y: 90, stars: 2, name: '1-2', done: true },
+    { x: 210, y: 60, stars: 1, name: '1-3', done: true },
+    { x: 290, y: 85, stars: 0, name: '2-1', done: false },
+    { x: 370, y: 55, stars: 0, name: '2-2', done: false },
+  ];
+  levels.forEach(l => {
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, 18, 0, Math.PI*2);
+    ctx.fillStyle = l.done ? '#4CAF50' : '#333';
+    ctx.fill();
+    ctx.strokeStyle = l.done ? '#66BB6A' : '#555';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(l.name, l.x, l.y+4);
+    // Stars
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '9px system-ui';
+    const starStr = '★'.repeat(l.stars) + '☆'.repeat(3-l.stars);
+    ctx.fillText(starStr, l.x, l.y+18);
+    ctx.textAlign = 'left';
+  });
+
+  // Unlock panel
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(20, 125, w-40, 80);
+  ctx.fillStyle = '#e94560';
+  ctx.font = 'bold 11px system-ui';
+  ctx.fillText('UNLOCKS', 35, 145);
+
+  const unlocks = ['🏹 Archer Tower', '🔮 Mage Tower', '💣 Cannon', '❄ Frost Tower', '🔒 ???', '🔒 ???'];
+  unlocks.forEach((u, i) => {
+    const x = 35 + (i%3)*((w-80)/3);
+    const y = 158 + Math.floor(i/3)*22;
+    ctx.fillStyle = i < 3 ? '#ccc' : '#555';
+    ctx.font = '10px system-ui';
+    ctx.fillText(u, x, y);
+  });
+}
+
+function drawRogueliteDemo() {
+  const r = getCtx('cv-roguelite'); if (!r) return;
+  const { ctx, w, h } = r;
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px system-ui';
+  ctx.fillText('CHOOSE YOUR TOWER', 20, 28);
+  ctx.fillStyle = '#888';
+  ctx.font = '11px system-ui';
+  ctx.fillText('Wave 5 reward — pick 1 of 3', 20, 46);
+
+  // Three random tower cards
+  const cards = [
+    { name: 'Chain Lightning', rarity: 'RARE', color: '#4FC3F7', rarityColor: '#4FC3F7', desc: 'Hits 3 enemies' },
+    { name: 'Inferno Pillar', rarity: 'EPIC', color: '#AB47BC', rarityColor: '#AB47BC', desc: '+200% damage' },
+    { name: 'Gold Mine', rarity: 'COMMON', color: '#FFD700', rarityColor: '#888', desc: '+5 gold/sec' },
+  ];
+  cards.forEach((c, i) => {
+    const x = 20 + i*((w-55)/3 + 5);
+    const cw = (w-55)/3;
+
+    ctx.fillStyle = '#2a2a3e';
+    ctx.strokeStyle = i === 1 ? c.rarityColor : '#3a3a4e';
+    ctx.lineWidth = i === 1 ? 2 : 1;
+    ctx.beginPath();
+    ctx.roundRect(x, 58, cw, 140, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Icon area
+    ctx.fillStyle = `${c.color}22`;
+    ctx.fillRect(x+8, 68, cw-16, 50);
+    ctx.fillStyle = c.color;
+    ctx.beginPath();
+    ctx.arc(x+cw/2, 93, 16, 0, Math.PI*2);
+    ctx.fill();
+
+    // Rarity badge
+    ctx.fillStyle = `${c.rarityColor}33`;
+    ctx.fillRect(x+8, 125, cw-16, 16);
+    ctx.fillStyle = c.rarityColor;
+    ctx.font = 'bold 8px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.rarity, x+cw/2, 136);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.fillText(c.name, x+cw/2, 155);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '9px system-ui';
+    ctx.fillText(c.desc, x+cw/2, 170);
+    ctx.fillText('▸ Click to select', x+cw/2, 188);
+    ctx.textAlign = 'left';
+  });
+}
+
+// ============ TOWER COUNT DEMOS ============
+function drawTowersSmall() {
+  const r = getCtx('cv-towers-s'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  const towers = [
+    { name: 'Arrow', color: '#8B4513' },
+    { name: 'Mage', color: '#4169E1' },
+    { name: 'Cannon', color: '#B22222' },
+    { name: 'Frost', color: '#00CED1' },
+    { name: 'Poison', color: '#2E8B57' },
+    { name: 'Tesla', color: '#FFD700' },
+    { name: 'Buff', color: '#FF69B4' },
+  ];
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Tower Roster — Focused', 20, 25);
+
+  towers.forEach((t, i) => {
+    const x = 25 + i * 52;
+    const y = h/2;
+    ctx.fillStyle = t.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff3';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#ccc';
+    ctx.font = '8px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.name, x, y+32);
+    ctx.textAlign = 'left';
+  });
+
+  ctx.fillStyle = '#888';
+  ctx.font = '10px system-ui';
+  ctx.fillText('Every tower deeply unique — quality over quantity', 20, h-15);
+}
+
+function drawTowersMedium() {
+  const r = getCtx('cv-towers-m'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  const colors = ['#8B4513','#4169E1','#B22222','#00CED1','#2E8B57','#FFD700','#FF69B4','#FF6347','#8A2BE2','#20B2AA','#FF8C00','#778899','#DC143C'];
+  const names = ['Arrow','Mage','Cannon','Frost','Poison','Tesla','Buff','Fire','Arcane','Heal','Bomb','Sniper','Blood'];
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Tower Roster — Balanced', 20, 25);
+
+  colors.forEach((c, i) => {
+    const col = i % 7;
+    const row = Math.floor(i / 7);
+    const x = 30 + col * 52;
+    const y = 60 + row * 70;
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#aaa';
+    ctx.font = '7px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(names[i], x, y+26);
+    ctx.textAlign = 'left';
+  });
+}
+
+function drawTowersLarge() {
+  const r = getCtx('cv-towers-l'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Tower Roster — Expansive', 20, 25);
+
+  const hues = [];
+  for (let i = 0; i < 24; i++) hues.push(`hsl(${i*15}, 70%, 55%)`);
+
+  hues.forEach((c, i) => {
+    const col = i % 8;
+    const row = Math.floor(i / 8);
+    const x = 28 + col * 48;
+    const y = 55 + row * 55;
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(x, y, 14, 0, Math.PI*2);
+    ctx.fill();
+    if (i >= 16) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔒', x, y+5);
+      ctx.textAlign = 'left';
+    }
+  });
+
+  ctx.fillStyle = '#888';
+  ctx.font = '10px system-ui';
+  ctx.fillText('16 unlocked + 8 locked — maximum variety', 20, h-15);
+}
+
+// ============ UPGRADE DEMOS ============
+function drawUpgradeLinear() {
+  const r = getCtx('cv-upg-linear'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Arrow Tower Upgrades', 20, 25);
+
+  const levels = [
+    { name: 'Lv 1', desc: 'Basic', size: 14, color: '#8B4513' },
+    { name: 'Lv 2', desc: '+Damage', size: 18, color: '#A0522D' },
+    { name: 'Lv 3', desc: '+Speed', size: 22, color: '#CD853F' },
+    { name: 'Lv 4', desc: 'MAX', size: 26, color: '#FFD700' },
+  ];
+
+  levels.forEach((l, i) => {
+    const x = 60 + i * 95;
+    const y = h/2 + 10;
+
+    // Arrow connecting
+    if (i < 3) {
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + l.size + 8, y);
+      ctx.lineTo(x + 95 - levels[i+1].size - 8, y);
+      ctx.stroke();
+      ctx.fillStyle = '#555';
+      ctx.beginPath();
+      ctx.moveTo(x + 95 - levels[i+1].size - 8, y-4);
+      ctx.lineTo(x + 95 - levels[i+1].size, y);
+      ctx.lineTo(x + 95 - levels[i+1].size - 8, y+4);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = l.color;
+    ctx.beginPath();
+    ctx.arc(x, y, l.size, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(l.name, x, y + l.size + 16);
+    ctx.fillStyle = '#888';
+    ctx.font = '9px system-ui';
+    ctx.fillText(l.desc, x, y + l.size + 28);
+    ctx.textAlign = 'left';
+  });
+}
+
+function drawUpgradeBranch() {
+  const r = getCtx('cv-upg-branch'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Arrow Tower — Choose Path', 20, 25);
+
+  // Base tower
+  const bx = 60, by = h/2 + 10;
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.arc(bx, by, 16, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Base', bx, by+28);
+
+  // Branch lines
+  const branches = [
+    { y: by-55, color: '#FF6347', name: 'Path A: Rapid Fire', nodes: ['Fast Shot','Double Arrow','Arrow Storm'] },
+    { y: by, color: '#4FC3F7', name: 'Path B: Piercing', nodes: ['Pierce','Armor Break','Siege Arrow'] },
+    { y: by+55, color: '#66BB6A', name: 'Path C: Poison', nodes: ['Venom Tip','Toxic Cloud','Plague Arrow'] },
+  ];
+
+  branches.forEach(b => {
+    ctx.strokeStyle = b.color + '66';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx+20, by);
+    ctx.lineTo(120, b.y);
+    ctx.stroke();
+
+    b.nodes.forEach((n, ni) => {
+      const nx = 140 + ni*90;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(nx, b.y, 12, 0, Math.PI*2);
+      ctx.fill();
+      if (ni < 2) {
+        ctx.strokeStyle = b.color + '66';
+        ctx.beginPath();
+        ctx.moveTo(nx+14, b.y);
+        ctx.lineTo(nx+76, b.y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ccc';
+      ctx.font = '7px system-ui';
+      ctx.fillText(n, nx, b.y+22);
+    });
+  });
+  ctx.textAlign = 'left';
+}
+
+function drawUpgradeModular() {
+  const r = getCtx('cv-upg-mod'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Modular Tower Builder', 20, 25);
+
+  // Tower with module slots
+  const tx = w/2, ty = h/2+5;
+  ctx.fillStyle = '#444';
+  ctx.beginPath();
+  ctx.arc(tx, ty, 30, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#888';
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('BASE', tx, ty+4);
+
+  // Module slots around the tower
+  const slots = [
+    { angle: -Math.PI/2, label: 'WEAPON', color: '#FF6347', mod: '🔥 Fire' },
+    { angle: Math.PI/6, label: 'UTILITY', color: '#4FC3F7', mod: '⚡ Speed' },
+    { angle: 5*Math.PI/6, label: 'SPECIAL', color: '#66BB6A', mod: '💚 Heal' },
+  ];
+
+  slots.forEach(s => {
+    const sx = tx + Math.cos(s.angle)*70;
+    const sy = ty + Math.sin(s.angle)*60;
+
+    // Connection line
+    ctx.strokeStyle = s.color + '44';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(tx+Math.cos(s.angle)*32, ty+Math.sin(s.angle)*32);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Slot
+    ctx.fillStyle = '#2a2a3e';
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(sx-35, sy-18, 70, 36, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = s.color;
+    ctx.font = 'bold 7px system-ui';
+    ctx.fillText(s.label, sx, sy-5);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px system-ui';
+    ctx.fillText(s.mod, sx, sy+10);
+  });
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = '#888';
+  ctx.font = '9px system-ui';
+  ctx.fillText('Swap modules for custom tower builds', 20, h-10);
+}
+
+// ============ GAME MODE DEMOS ============
+function drawModeCampaign() {
+  const r = getCtx('cv-mode-camp'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  // World map with regions
+  ctx.fillStyle = '#2a4a2a';
+  ctx.beginPath();
+  ctx.moveTo(20, h*0.4);
+  ctx.quadraticCurveTo(w*0.3, h*0.2, w*0.5, h*0.35);
+  ctx.quadraticCurveTo(w*0.7, h*0.5, w-20, h*0.3);
+  ctx.lineTo(w-20, h*0.9);
+  ctx.quadraticCurveTo(w*0.5, h*0.7, 20, h*0.85);
+  ctx.fill();
+
+  // Level markers
+  const points = [
+    {x:60,y:h*0.55,s:3,done:true},{x:130,y:h*0.45,s:3,done:true},
+    {x:200,y:h*0.5,s:2,done:true},{x:270,y:h*0.4,s:1,done:true},
+    {x:340,y:h*0.55,s:0,done:false,current:true},
+    {x:w-60,y:h*0.45,s:0,done:false}
+  ];
+
+  // Connect with path
+  ctx.strokeStyle = '#665';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5,5]);
+  ctx.beginPath();
+  points.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 14, 0, Math.PI*2);
+    ctx.fillStyle = p.done ? '#4CAF50' : p.current ? '#e94560' : '#333';
+    ctx.fill();
+    if (p.current) {
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '8px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('★'.repeat(p.s)+'☆'.repeat(3-p.s), p.x, p.y+26);
+  });
+  ctx.textAlign = 'left';
+}
+
+function drawModeEndless() {
+  const r = getCtx('cv-mode-end'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  // Two mode tabs
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(20, 15, (w-50)/2, 28);
+  ctx.fillStyle = '#e94560';
+  ctx.fillRect(25+(w-50)/2, 15, (w-50)/2, 28);
+
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888';
+  ctx.fillText('CAMPAIGN', 20+(w-50)/4, 34);
+  ctx.fillStyle = '#fff';
+  ctx.fillText('ENDLESS MODE', 25+(w-50)/2+(w-50)/4, 34);
+  ctx.textAlign = 'left';
+
+  // Endless wave counter
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(20, 55, w-40, h-75);
+
+  ctx.fillStyle = '#e94560';
+  ctx.font = 'bold 24px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('WAVE 47', w/2, 95);
+  ctx.fillStyle = '#888';
+  ctx.font = '11px system-ui';
+  ctx.fillText('Personal Best: Wave 52', w/2, 115);
+
+  // Difficulty scaling bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(40, 135, w-80, 12);
+  const gradBar = ctx.createLinearGradient(40, 0, w-40, 0);
+  gradBar.addColorStop(0, '#4CAF50');
+  gradBar.addColorStop(0.5, '#FFD700');
+  gradBar.addColorStop(1, '#f44336');
+  ctx.fillStyle = gradBar;
+  ctx.fillRect(40, 135, (w-80)*0.85, 12);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '9px system-ui';
+  ctx.fillText('Difficulty ████████████████████░░░', w/2, 162);
+
+  // Wave preview
+  ctx.fillStyle = '#ccc';
+  ctx.font = '10px system-ui';
+  ctx.fillText('Next: 15x Armored + 3x Boss', w/2, 185);
+  ctx.textAlign = 'left';
+}
+
+function drawModeChallenge() {
+  const r = getCtx('cv-mode-chal'); if (!r) return;
+  const { ctx, w, h } = r;
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, w, h);
+
+  // Three mode tabs
+  const tw = (w-60)/3;
+  ['CAMPAIGN', 'ENDLESS', 'CHALLENGE'].forEach((t, i) => {
+    ctx.fillStyle = i === 2 ? '#e94560' : '#2a2a3e';
+    ctx.fillRect(20+i*(tw+5), 12, tw, 24);
+    ctx.fillStyle = i === 2 ? '#fff' : '#666';
+    ctx.font = 'bold 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(t, 20+i*(tw+5)+tw/2, 28);
+  });
+  ctx.textAlign = 'left';
+
+  // Challenge card
+  ctx.fillStyle = '#2a2a3e';
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(20, 48, w-40, h-68, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#e94560';
+  ctx.font = 'bold 13px system-ui';
+  ctx.fillText("WEEKLY CHALLENGE", 35, 72);
+  ctx.fillStyle = '#888';
+  ctx.font = '10px system-ui';
+  ctx.fillText('Expires in 3d 14h', 35, 88);
+
+  // Modifiers
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px system-ui';
+  ctx.fillText('Modifiers:', 35, 110);
+
+  const mods = [
+    { icon: '🚫', text: 'No Cannon towers', color: '#f44' },
+    { icon: '⚡', text: '2x enemy speed', color: '#ff0' },
+    { icon: '💰', text: 'Half starting gold', color: '#f80' },
+  ];
+  mods.forEach((m, i) => {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(35, 118+i*22, w-80, 18);
+    ctx.fillStyle = m.color;
+    ctx.font = '10px system-ui';
+    ctx.fillText(`${m.icon} ${m.text}`, 42, 132+i*22);
+  });
+
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 10px system-ui';
+  ctx.fillText('🏆 Reward: Exclusive Tower Skin', 35, h-18);
+}
+
+
+// ============ INIT ============
+window.addEventListener('load', () => {
+  // Art styles
+  drawPixelDemo();
+  drawVectorDemo();
+  drawIsoDemo();
+  draw3DDemo();
+
+  // Themes
+  drawFantasyDemo();
+  drawSciFiDemo();
+  drawMilitaryDemo();
+  drawAbstractDemo();
+
+  // Map types
+  drawFixedPathDemo();
+  drawOpenFieldDemo();
+  drawHybridDemo();
+
+  // Progression
+  drawInMatchDemo();
+  drawMetaDemo();
+  drawRogueliteDemo();
+
+  // Tower counts
+  drawTowersSmall();
+  drawTowersMedium();
+  drawTowersLarge();
+
+  // Upgrade styles
+  drawUpgradeLinear();
+  drawUpgradeBranch();
+  drawUpgradeModular();
+
+  // Game modes
+  drawModeCampaign();
+  drawModeEndless();
+  drawModeChallenge();
+});
+
+// Sticky nav highlight
+const sections = document.querySelectorAll('.section');
+const navLinks = document.querySelectorAll('nav a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 100) current = s.id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>
