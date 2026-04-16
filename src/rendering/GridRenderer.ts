@@ -310,58 +310,119 @@ export class GridRenderer {
   }
 
   /**
-   * Entry/exit portals. Concentric pulsing rings + flowing chevrons +
-   * a label. Much more evocative than the old static triangle.
+   * Entry = "SPAWN GATE" — industrial bunker-door look with inner
+   * containment field and forward chevron.
+   * Exit  = "CORE"       — hexagonal target/objective with crosshairs.
+   *
+   * Both are thematic and mostly static. A very gentle border pulse
+   * (breathe < 10% alpha swing) hints at "this is alive" without being
+   * distracting. No expanding ring strobes, no white core flash.
    */
   private drawPortals(): void {
     this.portalGraphics.clear();
+    const pulse = Math.sin(this.portalPhase * 0.8) * 0.5 + 0.5; // 0..1, slow
 
     for (const pos of this.entryWorldPositions) {
-      this.drawPortal(pos.x, pos.y, 0x4ade80, 'entry');
+      this.drawEntryGate(pos.x, pos.y, pulse);
     }
     for (const pos of this.exitWorldPositions) {
-      this.drawPortal(pos.x, pos.y, COLORS.DANGER, 'exit');
+      this.drawExitCore(pos.x, pos.y, pulse);
     }
   }
 
-  private drawPortal(x: number, y: number, color: number, kind: 'entry' | 'exit'): void {
+  private drawEntryGate(x: number, y: number, pulse: number): void {
     const g = this.portalGraphics;
-    const pulse = Math.sin(this.portalPhase * 2) * 0.5 + 0.5;
+    const color = 0x4ade80; // green
 
-    // Expanding ring ripples — 3 staggered rings animating outward
-    for (let i = 0; i < 3; i++) {
-      const phase = (this.portalPhase + i / 3) % 1;
-      const r = 10 + phase * 28;
-      const a = (1 - phase) * 0.4;
-      g.lineStyle(2, color, a);
-      g.strokeCircle(x, y, r);
+    // Soft halo
+    g.fillStyle(color, 0.06 + pulse * 0.02);
+    g.fillCircle(x + 2, y, 22);
+    g.fillStyle(color, 0.1);
+    g.fillCircle(x + 2, y, 14);
+
+    // Gate panel — rounded rect extending left of the grid cell
+    const w = 22;
+    const h = 28;
+    const gx = x - w + 2;
+    const gy = y - h / 2;
+    // Dark panel
+    g.fillStyle(0x0a1810, 0.85);
+    g.fillRoundedRect(gx, gy, w, h, 3);
+    // Outer border
+    g.lineStyle(1.5, color, 0.7 + pulse * 0.2);
+    g.strokeRoundedRect(gx, gy, w, h, 3);
+    // Inner highlight
+    g.lineStyle(0.5, color, 0.25);
+    g.strokeRoundedRect(gx + 2, gy + 2, w - 4, h - 4, 2);
+
+    // Corner rivets (small dots)
+    g.fillStyle(color, 0.8);
+    g.fillCircle(gx + 3, gy + 3, 1);
+    g.fillCircle(gx + w - 3, gy + 3, 1);
+    g.fillCircle(gx + 3, gy + h - 3, 1);
+    g.fillCircle(gx + w - 3, gy + h - 3, 1);
+
+    // Inner "containment" diagonal lines
+    g.lineStyle(0.5, color, 0.2);
+    g.lineBetween(gx + 4, gy + 6, gx + w - 4, gy + 6);
+    g.lineBetween(gx + 4, gy + h - 6, gx + w - 4, gy + h - 6);
+
+    // Forward chevron, slightly brighter (points toward the path, i.e. right)
+    const cx = x - 4;
+    g.fillStyle(color, 0.95);
+    g.fillTriangle(cx + 5, y, cx - 2, y - 4, cx - 2, y + 4);
+    // Stacked fainter chevrons behind, suggest motion
+    g.fillStyle(color, 0.4);
+    g.fillTriangle(cx - 1, y, cx - 8, y - 4, cx - 8, y + 4);
+  }
+
+  private drawExitCore(x: number, y: number, pulse: number): void {
+    const g = this.portalGraphics;
+    const color = COLORS.DANGER; // red
+
+    // Soft warning halo
+    g.fillStyle(color, 0.06 + pulse * 0.02);
+    g.fillCircle(x - 2, y, 24);
+    g.fillStyle(color, 0.1);
+    g.fillCircle(x - 2, y, 15);
+
+    // Outer hexagon
+    const rOuter = 13;
+    const cxOuter = x - 2;
+    const hexOuter: Phaser.Geom.Point[] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i;
+      hexOuter.push(new Phaser.Geom.Point(cxOuter + Math.cos(a) * rOuter, y + Math.sin(a) * rOuter));
     }
+    g.fillStyle(0x18080c, 0.85);
+    g.fillPoints(hexOuter, true);
+    g.lineStyle(1.5, color, 0.75 + pulse * 0.2);
+    g.strokePoints(hexOuter, true);
 
-    // Soft outer glow
-    g.fillStyle(color, 0.12 + pulse * 0.05);
-    g.fillCircle(x, y, 18);
-    g.fillStyle(color, 0.25 + pulse * 0.1);
-    g.fillCircle(x, y, 10);
-
-    // Inner bright core
-    g.fillStyle(color, 0.9);
-    g.fillCircle(x, y, 3.5);
-    g.fillStyle(0xffffff, 0.8);
-    g.fillCircle(x, y, 1.5);
-
-    // Chevrons — three triangles pointing inward (entry) or outward (exit)
-    const dirSign = kind === 'entry' ? 1 : -1;
-    for (let i = 0; i < 3; i++) {
-      const offset = 14 + i * 7;
-      const cAlpha = 0.7 - i * 0.18 + pulse * 0.1;
-      const tipX = x + dirSign * offset;
-      g.fillStyle(color, cAlpha);
-      g.fillTriangle(
-        tipX, y,
-        tipX - dirSign * 6, y - 5,
-        tipX - dirSign * 6, y + 5,
-      );
+    // Inner hexagon
+    const rInner = 7;
+    const hexInner: Phaser.Geom.Point[] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i;
+      hexInner.push(new Phaser.Geom.Point(cxOuter + Math.cos(a) * rInner, y + Math.sin(a) * rInner));
     }
+    g.lineStyle(1, color, 0.6);
+    g.strokePoints(hexInner, true);
+
+    // Crosshair ticks — short segments at cardinal directions on outer hex
+    const tickLen = 5;
+    g.lineStyle(1.5, color, 0.85);
+    g.lineBetween(cxOuter, y - rOuter - 1, cxOuter, y - rOuter - 1 - tickLen);
+    g.lineBetween(cxOuter, y + rOuter + 1, cxOuter, y + rOuter + 1 + tickLen);
+    g.lineBetween(cxOuter - rOuter - 1, y, cxOuter - rOuter - 1 - tickLen, y);
+    g.lineBetween(cxOuter + rOuter + 1, y, cxOuter + rOuter + 1 + tickLen, y);
+
+    // Central marker — small red diamond on a dark bead
+    g.fillStyle(0x000000, 0.6);
+    g.fillCircle(cxOuter, y, 3);
+    g.fillStyle(color, 0.95);
+    g.fillTriangle(cxOuter, y - 3, cxOuter + 3, y, cxOuter, y + 3);
+    g.fillTriangle(cxOuter, y - 3, cxOuter - 3, y, cxOuter, y + 3);
   }
 
   private drawAnimatedPath(): void {
@@ -390,7 +451,18 @@ export class GridRenderer {
     this.pathGraphics.lineStyle(1.5, COLORS.GOLD, 0.5);
     this.strokePathPolyline(toWorld);
 
-    // Layer 4 — flowing chevrons along the path showing direction
+    // Layer 4 — flowing chevrons along the path showing direction.
+    //
+    // Chevrons should appear to travel FROM entry (waypoint 0) TO exit
+    // (last waypoint). We track `pathFlowOffset` growing over time and
+    // want each chevron's local `d` within a segment to grow with it,
+    // so the chevron slides forward along its segment until it wraps.
+    //
+    // For a chevron at global position P on the path, local d in this
+    // segment is `P - distAccum`. Chevrons live at globals
+    // `pathFlowOffset + k*step`, so local d satisfies
+    //   (d + distAccum) mod step == pathFlowOffset mod step
+    // → d = ((pathFlowOffset - distAccum) mod step + step) mod step
     const step = 36; // distance between chevrons
     let distAccum = 0;
     for (let i = 1; i < this.currentPathWaypoints.length; i++) {
@@ -403,14 +475,11 @@ export class GridRenderer {
       const ux = dx / segLen;
       const uy = dy / segLen;
 
-      // Walk along the segment placing chevrons offset by pathFlowOffset
-      let d = step - ((distAccum + this.pathFlowOffset) % step);
+      let d = (((this.pathFlowOffset - distAccum) % step) + step) % step;
       while (d < segLen) {
         const cx = prev.x + ux * d;
         const cy = prev.y + uy * d;
-        // Chevron triangle pointing along (ux, uy)
         const tip = { x: cx + ux * 4, y: cy + uy * 4 };
-        // Perp vector for the base
         const px = -uy;
         const py = ux;
         const base1 = { x: cx - ux * 2 + px * 3, y: cy - uy * 2 + py * 3 };
