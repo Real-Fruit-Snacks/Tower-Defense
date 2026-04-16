@@ -53,9 +53,11 @@ export class CampaignState {
     const config = this.getWorldConfig();
     if (!config) return [];
 
-    // Use world-specific seed for deterministic map generation
-    const worldSeed = this.mapSeed * 31 + this.currentWorldId * 97;
-    this.currentNodes = NodeMapGenerator.generate(config, GAME.WIDTH, GAME.HEIGHT);
+    // Use world-specific seed for deterministic map generation.
+    // Forcing to unsigned 32-bit so the seed stays stable even if
+    // this.mapSeed comes from Date.now() (which exceeds int32 range).
+    const worldSeed = ((this.mapSeed >>> 0) * 31 + this.currentWorldId * 97) >>> 0;
+    this.currentNodes = NodeMapGenerator.generate(config, GAME.WIDTH, GAME.HEIGHT, worldSeed);
 
     // Assign seeds and worldId to each node for level generation
     this.currentNodes.forEach((node, index) => {
