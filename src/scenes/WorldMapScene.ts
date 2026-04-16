@@ -131,6 +131,10 @@ export class WorldMapScene extends Phaser.Scene {
     // Back button
     this.createBackButton();
 
+    // Abandon run button — lets the player wipe the current campaign
+    // progress and start over with a fresh map + full HP.
+    this.createAbandonButton();
+
     // Flash on entry. Kept short so it doesn't block a node-click flash
     // if the player taps immediately — any in-flight entry flash is also
     // reset inside triggerNodeEntry() as a belt-and-suspenders guard.
@@ -356,6 +360,175 @@ export class WorldMapScene extends Phaser.Scene {
         this.scene.start(SCENES.MAIN_MENU);
       });
     });
+  }
+
+  /**
+   * "ABANDON RUN" button next to BACK. Clears the campaign progress
+   * (seed, current/visited nodes, HP, world) via CampaignState.startNewRun()
+   * after a confirmation prompt, then restarts the scene so a brand-new
+   * map is generated.
+   */
+  private createAbandonButton(): void {
+    const btn = this.add.container(155, 20).setDepth(25);
+    const bg = this.add.graphics();
+    drawNeonRect(bg, -48, -14, 96, 28, COLORS.DANGER, 0.08, 5);
+    btn.add(bg);
+
+    const text = this.add.text(0, 0, 'ABANDON', {
+      fontFamily: FONT_FAMILY,
+      fontSize: 10,
+      color: '#f87171',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setLetterSpacing(2);
+    btn.add(text);
+
+    const hitArea = new Phaser.Geom.Rectangle(-48, -14, 96, 28);
+    btn.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+
+    btn.on('pointerover', () => {
+      this.input.setDefaultCursor('pointer');
+      bg.clear();
+      drawNeonRect(bg, -48, -14, 96, 28, COLORS.DANGER, 0.22, 5);
+      this.tweens.add({ targets: btn, scaleX: 1.05, scaleY: 1.05, duration: 100 });
+    });
+    btn.on('pointerout', () => {
+      this.input.setDefaultCursor('default');
+      bg.clear();
+      drawNeonRect(bg, -48, -14, 96, 28, COLORS.DANGER, 0.08, 5);
+      this.tweens.add({ targets: btn, scaleX: 1, scaleY: 1, duration: 100 });
+    });
+    btn.on('pointerdown', () => this.showAbandonConfirm());
+  }
+
+  /**
+   * Modal confirmation for abandoning the current run. Uses a
+   * translucent fullscreen dim + a neon panel with YES / NO buttons.
+   */
+  private showAbandonConfirm(): void {
+    const vw = GAME.WIDTH;
+    const vh = GAME.HEIGHT;
+    const modal = this.add.container(0, 0).setDepth(60);
+
+    // Fullscreen dim
+    const dim = this.add.graphics();
+    dim.fillStyle(0x000000, 0.7);
+    dim.fillRect(0, 0, vw, vh);
+    dim.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, vw, vh),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    modal.add(dim);
+
+    // Panel
+    const pw = 440;
+    const ph = 200;
+    const px = (vw - pw) / 2;
+    const py = (vh - ph) / 2;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(COLORS.UI_BG, 0.98);
+    panel.fillRoundedRect(px, py, pw, ph, 10);
+    panel.lineStyle(2, COLORS.DANGER, 0.7);
+    panel.strokeRoundedRect(px, py, pw, ph, 10);
+    panel.lineStyle(0.5, COLORS.DANGER, 0.3);
+    panel.strokeRoundedRect(px + 3, py + 3, pw - 6, ph - 6, 8);
+    modal.add(panel);
+
+    // Title
+    const title = this.add.text(vw / 2, py + 32, 'ABANDON RUN?', {
+      fontFamily: FONT_FAMILY,
+      fontSize: 22,
+      color: '#f87171',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setLetterSpacing(3);
+    modal.add(title);
+
+    // Body
+    const body = this.add.text(
+      vw / 2,
+      py + 80,
+      'This erases all campaign progress — your\ncurrent world, route, and HP.',
+      {
+        fontFamily: FONT_FAMILY,
+        fontSize: 12,
+        color: '#cccccc',
+        align: 'center',
+        lineSpacing: 4,
+      },
+    ).setOrigin(0.5);
+    modal.add(body);
+
+    // YES button
+    const yesBtn = this.add.container(vw / 2 - 85, py + ph - 36);
+    const yesBg = this.add.graphics();
+    drawNeonRect(yesBg, -60, -16, 120, 32, COLORS.DANGER, 0.18, 6);
+    yesBtn.add(yesBg);
+    const yesText = this.add.text(0, 0, 'YES, ABANDON', {
+      fontFamily: FONT_FAMILY,
+      fontSize: 11,
+      color: '#f87171',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setLetterSpacing(2);
+    yesBtn.add(yesText);
+    yesBtn.setInteractive(
+      new Phaser.Geom.Rectangle(-60, -16, 120, 32),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    yesBtn.on('pointerover', () => {
+      yesBg.clear();
+      drawNeonRect(yesBg, -60, -16, 120, 32, COLORS.DANGER, 0.4, 6);
+      this.tweens.add({ targets: yesBtn, scaleX: 1.05, scaleY: 1.05, duration: 100 });
+    });
+    yesBtn.on('pointerout', () => {
+      yesBg.clear();
+      drawNeonRect(yesBg, -60, -16, 120, 32, COLORS.DANGER, 0.18, 6);
+      this.tweens.add({ targets: yesBtn, scaleX: 1, scaleY: 1, duration: 100 });
+    });
+    yesBtn.on('pointerdown', () => {
+      modal.destroy();
+      this.abandonRun();
+    });
+    modal.add(yesBtn);
+
+    // NO button
+    const noBtn = this.add.container(vw / 2 + 85, py + ph - 36);
+    const noBg = this.add.graphics();
+    drawNeonRect(noBg, -60, -16, 120, 32, COLORS.ACCENT_CYAN, 0.1, 6);
+    noBtn.add(noBg);
+    const noText = this.add.text(0, 0, 'CANCEL', {
+      fontFamily: FONT_FAMILY,
+      fontSize: 11,
+      color: '#00ffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setLetterSpacing(2);
+    noBtn.add(noText);
+    noBtn.setInteractive(
+      new Phaser.Geom.Rectangle(-60, -16, 120, 32),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    noBtn.on('pointerover', () => {
+      noBg.clear();
+      drawNeonRect(noBg, -60, -16, 120, 32, COLORS.ACCENT_CYAN, 0.3, 6);
+      this.tweens.add({ targets: noBtn, scaleX: 1.05, scaleY: 1.05, duration: 100 });
+    });
+    noBtn.on('pointerout', () => {
+      noBg.clear();
+      drawNeonRect(noBg, -60, -16, 120, 32, COLORS.ACCENT_CYAN, 0.1, 6);
+      this.tweens.add({ targets: noBtn, scaleX: 1, scaleY: 1, duration: 100 });
+    });
+    noBtn.on('pointerdown', () => modal.destroy());
+    modal.add(noBtn);
+
+    // Fade in
+    modal.setAlpha(0);
+    this.tweens.add({ targets: modal, alpha: 1, duration: 180, ease: 'Quad.easeOut' });
+  }
+
+  /** Wipe campaign state and restart the scene with a fresh map. */
+  private abandonRun(): void {
+    this.campaignState?.startNewRun();
+    this.cameras.main.fadeOut(250, 8, 8, 15);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart());
   }
 
   // ============ Connections ============
