@@ -12,9 +12,12 @@ export class NodeMapGenerator {
     const layerNodes: string[][] = [];
     let nodeCount = 0;
 
+    // Top margin must clear the 72px header bar plus the largest node radius
+    // (~28 for boss) + its label (~28) + jitter (~8) + safety. Bottom margin
+    // only needs to clear the node radius + jitter, so it stays smaller.
     const marginX = 60;
-    const marginTop = 80;
-    const marginBottom = 30;
+    const marginTop = 120;
+    const marginBottom = 50;
     const usableWidth = mapWidth - marginX * 2;
     const usableHeight = mapHeight - marginTop - marginBottom;
 

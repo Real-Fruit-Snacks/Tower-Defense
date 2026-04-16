@@ -1180,9 +1180,10 @@ export class WorldMapScene extends Phaser.Scene {
       for (let i = 0; i < count; i++) {
         const nodeId = layer === 0 ? 'start' : `node_${id++}`;
         const marginX = 60;
-        const marginTop = 80;
+        const marginTop = 120;
+        const marginBottom = 50;
         const usableW = GAME.WIDTH - marginX * 2;
-        const usableH = GAME.HEIGHT - marginTop - 30;
+        const usableH = GAME.HEIGHT - marginTop - marginBottom;
         const x = marginX + layer * (usableW / (layers - 1));
         const ySpread = count > 1 ? usableH / (count - 1) : 0;
         const y = marginTop + (count === 1 ? usableH / 2 : i * ySpread) + randomRange(-8, 8);
