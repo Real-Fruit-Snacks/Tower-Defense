@@ -314,14 +314,26 @@ export class GameScene extends Phaser.Scene {
       hudScene?.updateWavePreview(initialWave);
     });
 
-    // Input: grid clicks
+    // Input: grid clicks + hover highlights.
+    //
+    // We can't use pointer.worldX/Y here because Phaser updates those by
+    // iterating every camera in the scene that contains the pointer, and
+    // the LAST one wins. Our overlayCam / bgCam both cover the full
+    // viewport at zoom 1, so they'd overwrite the gameplay cam's
+    // projection with raw screen coords and every click would land in
+    // the wrong grid cell. Project through the gameplay cam explicitly.
+    const projectPointer = (pointer: Phaser.Input.Pointer): Phaser.Math.Vector2 => {
+      return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    };
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.handleGridClick(pointer.worldX, pointer.worldY);
+      const world = projectPointer(pointer);
+      this.handleGridClick(world.x, world.y);
     });
 
-    // Input: hover highlights
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      this.handleGridHover(pointer.worldX, pointer.worldY);
+      const world = projectPointer(pointer);
+      this.handleGridHover(world.x, world.y);
     });
 
     // Listen for tower selection from bar
