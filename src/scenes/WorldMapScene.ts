@@ -1296,19 +1296,119 @@ export class WorldMapScene extends Phaser.Scene {
       case 'shop':
         this.scene.start(SCENES.SHOP);
         break;
-      case 'rest':
+      case 'rest': {
+        // Rest nodes heal — NOT a battle. Show feedback so the refresh
+        // isn't confusing, then transition the map with a fade.
         this.campaignState?.heal(5);
         this.campaignState?.save();
-        this.scene.restart();
+        this.showNonBattleFeedback(node, '+5 HP', 'REST', COLORS.SUCCESS);
+        this.finishNonBattleNode();
         break;
+      }
       case 'event': {
         const persistentEvt = this.game.registry.get('persistentState') as PersistentState | undefined;
         if (persistentEvt) {
           persistentEvt.shardTracker.addShards(15);
         }
-        this.scene.restart();
+        this.showNonBattleFeedback(node, '+15 SHARDS', 'EVENT', COLORS.ACCENT_CYAN);
+        this.finishNonBattleNode();
         break;
       }
     }
+  }
+
+  /**
+   * Reward popup + subtitle for non-battle nodes (event, rest). The map
+   * will fade + refresh after showing this, so the player can see what
+   * they picked up before the map regenerates around them.
+   */
+  private showNonBattleFeedback(
+    node: NodeMapNode,
+    rewardText: string,
+    label: string,
+    color: number,
+  ): void {
+    const hex = '#' + color.toString(16).padStart(6, '0');
+
+    // Small label above ("EVENT" / "REST")
+    const labelText = this.add.text(node.x, node.y - 44, label, {
+      fontFamily: 'monospace',
+      fontSize: 10,
+      color: hex,
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0.5).setDepth(15).setAlpha(0).setLetterSpacing(3);
+
+    // Large reward text floating up from the node
+    const reward = this.add.text(node.x, node.y - 28, rewardText, {
+      fontFamily: 'Segoe UI, system-ui, sans-serif',
+      fontSize: 22,
+      color: hex,
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5, 0.5).setDepth(15).setAlpha(0);
+
+    // Fade in + float up
+    this.tweens.add({
+      targets: [labelText, reward],
+      alpha: 1,
+      duration: 220,
+      ease: 'Quad.easeOut',
+    });
+    this.tweens.add({
+      targets: reward,
+      y: node.y - 60,
+      duration: 900,
+      ease: 'Quad.easeOut',
+    });
+    this.tweens.add({
+      targets: labelText,
+      y: node.y - 76,
+      duration: 900,
+      ease: 'Quad.easeOut',
+    });
+    // Fade out tail
+    this.tweens.add({
+      targets: [labelText, reward],
+      alpha: 0,
+      duration: 250,
+      delay: 650,
+      onComplete: () => {
+        labelText.destroy();
+        reward.destroy();
+      },
+    });
+
+    // Small sparkle burst at the node
+    for (let i = 0; i < 10; i++) {
+      const angle = (Math.PI * 2 * i) / 10;
+      const r = randomRange(10, 22);
+      const sparkle = this.add.graphics().setDepth(14);
+      sparkle.setBlendMode(Phaser.BlendModes.ADD);
+      sparkle.fillStyle(color, 0.9);
+      sparkle.fillCircle(0, 0, 2);
+      sparkle.setPosition(node.x, node.y);
+      this.tweens.add({
+        targets: sparkle,
+        x: node.x + Math.cos(angle) * r,
+        y: node.y + Math.sin(angle) * r,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+        onComplete: () => sparkle.destroy(),
+      });
+    }
+  }
+
+  /**
+   * After a non-battle node feedback popup has had ~900ms to render,
+   * fade the camera out and restart the world-map scene so the player
+   * sees a clean transition rather than an abrupt restart mid-popup.
+   */
+  private finishNonBattleNode(): void {
+    this.time.delayedCall(950, () => {
+      this.cameras.main.fadeOut(220, 8, 8, 15);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart());
+    });
   }
 }
