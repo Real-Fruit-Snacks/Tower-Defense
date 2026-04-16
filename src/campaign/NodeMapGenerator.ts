@@ -52,15 +52,18 @@ export class NodeMapGenerator {
         currentIds.push(nodeId);
       }
 
-      // Connect to previous layer — denser connections for more path variety
+      // Connect to previous layer — each previous node gets AT LEAST
+      // 2 forward options (when possible) so the player rarely feels
+      // railroaded into a single choice.
       if (layer > 0 && layerNodes.length > 0) {
         const prevIds = layerNodes[layer - 1]!;
 
-        // Each previous node connects to 1-3 nodes in current layer
         for (const prevId of prevIds) {
           const prevNode = nodes.find(n => n.id === prevId)!;
           const maxConn = Math.min(currentIds.length, 3);
-          const connectCount = randomInt(1, maxConn);
+          const minConn = Math.min(2, currentIds.length);
+          // Bias toward 2-3 connections, but not exceeding layer size.
+          const connectCount = randomInt(minConn, maxConn);
           const shuffled = [...currentIds].sort(() => Math.random() - 0.5);
           for (let c = 0; c < connectCount; c++) {
             const targetId = shuffled[c]!;

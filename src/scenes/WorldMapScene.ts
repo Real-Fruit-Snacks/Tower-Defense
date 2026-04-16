@@ -401,8 +401,11 @@ export class WorldMapScene extends Phaser.Scene {
           this.connectionGfx.lineStyle(2.5, color, 0.85);
           this.drawCurvedLine(this.connectionGfx, node.x, node.y, target.x, target.y);
         } else {
-          // Locked / future paths — dim but visible
-          this.connectionGfx.lineStyle(1.2, 0x888888, 0.15);
+          // Locked / future paths — drawn very faintly so they hint at
+          // map topology without looking clickable. Previously at
+          // alpha 0.15 which read as "available but greyed out",
+          // causing confusion about which paths the player can pick.
+          this.connectionGfx.lineStyle(1, 0x555566, 0.06);
           this.drawCurvedLine(this.connectionGfx, node.x, node.y, target.x, target.y);
         }
       }
