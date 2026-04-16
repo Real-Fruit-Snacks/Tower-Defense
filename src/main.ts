@@ -15,6 +15,12 @@ import { PersistentState } from './roguelite/PersistentState';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
+  // Fixed design resolution, FIT-scaled to the viewport. This is the
+  // standard approach for fixed-aspect (16:9) browser games — gameplay
+  // stays pixel-perfect across devices and the letterbox bars are
+  // painted the game's background color via `backgroundColor` below +
+  // the matching CSS `html/body { background }` in index.html, so they
+  // blend into the atmosphere rather than looking like black voids.
   width: GAME.WIDTH,
   height: GAME.HEIGHT,
   parent: 'game-container',

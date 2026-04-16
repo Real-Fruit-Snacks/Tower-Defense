@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME, COLORS } from '../constants';
+import { COLORS } from '../constants';
 import { randomRange } from '../utils/MathUtils';
 
 const ELEMENT_PALETTE = [
@@ -16,67 +16,95 @@ const ELEMENT_PALETTE = [
 type ShapeKind = 'circle' | 'triangle' | 'hexagon' | 'octagon';
 const SHAPE_KINDS: ShapeKind[] = ['circle', 'triangle', 'hexagon', 'octagon'];
 
+interface FloatingShape {
+  gfx: Phaser.GameObjects.Graphics;
+  kind: ShapeKind;
+  size: number;
+  color: number;
+  // Position stored as normalized 0..1 of the *viewport* so we can reflow
+  // on resize without losing the drift tween.
+  driftTweens: Phaser.Tweens.Tween[];
+}
+
+/**
+ * Fills the entire viewport with atmospheric vignette + floating neon
+ * shapes + subtle scanlines. Resize-aware: redraws on `scale.resize` so
+ * the game looks full-screen at any aspect ratio.
+ */
 export class BackgroundRenderer {
   private scene: Phaser.Scene;
   private vignette: Phaser.GameObjects.Graphics;
   private scanlines: Phaser.GameObjects.Graphics;
-  private shapes: Phaser.GameObjects.Graphics[] = [];
-  private tweens: Phaser.Tweens.Tween[] = [];
+  private shapes: FloatingShape[] = [];
+  private allTweens: Phaser.Tweens.Tween[] = [];
+  private resizeHandler: () => void;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
 
-    this.vignette = this.createVignette();
-    this.shapes = this.createFloatingShapes();
-    this.scanlines = this.createScanlines();
+    this.vignette = this.scene.add.graphics().setDepth(-2);
+    this.scanlines = this.scene.add.graphics().setDepth(-0.5);
+    this.drawVignette();
+    this.drawScanlines();
+
+    this.createFloatingShapes();
+
+    // Redraw vignette + scanlines + reposition shapes when the viewport
+    // changes (window resize, fullscreen toggle, orientation flip).
+    this.resizeHandler = (): void => {
+      this.drawVignette();
+      this.drawScanlines();
+    };
+    this.scene.scale.on('resize', this.resizeHandler);
+    this.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Vignette — dark edges / corners                                   */
-  /* ------------------------------------------------------------------ */
+  private get viewW(): number { return this.scene.scale.width; }
+  private get viewH(): number { return this.scene.scale.height; }
 
-  private createVignette(): Phaser.GameObjects.Graphics {
-    const g = this.scene.add.graphics();
-    g.setDepth(-2);
-
+  private drawVignette(): void {
+    const g = this.vignette;
+    g.clear();
     const steps = 20;
-    const maxInset = 150;
-
+    const maxInset = Math.min(150, Math.min(this.viewW, this.viewH) * 0.2);
     for (let i = 0; i < steps; i++) {
-      const t = i / (steps - 1); // 0 = outermost, 1 = innermost
-      const alpha = 0.4 * (1 - t); // 0.4 -> 0.0
+      const t = i / (steps - 1);
+      const alpha = 0.4 * (1 - t);
       const inset = maxInset * t;
-
       g.fillStyle(0x000000, alpha);
-      g.fillRect(inset, inset, GAME.WIDTH - inset * 2, GAME.HEIGHT - inset * 2);
+      g.fillRect(inset, inset, this.viewW - inset * 2, this.viewH - inset * 2);
     }
-
-    return g;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Floating geometric outlines                                       */
-  /* ------------------------------------------------------------------ */
+  private drawScanlines(): void {
+    const g = this.scanlines;
+    g.clear();
+    g.lineStyle(1, 0xffffff, 0.012);
+    for (let y = 0; y < this.viewH; y += 4) {
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(this.viewW, y);
+      g.strokePath();
+    }
+  }
 
-  private createFloatingShapes(): Phaser.GameObjects.Graphics[] {
-    const shapes: Phaser.GameObjects.Graphics[] = [];
-
+  private createFloatingShapes(): void {
     for (let i = 0; i < 8; i++) {
       const kind = SHAPE_KINDS[Math.floor(Math.random() * SHAPE_KINDS.length)] ?? 'circle';
       const size = randomRange(60, 180);
       const color = ELEMENT_PALETTE[Math.floor(Math.random() * ELEMENT_PALETTE.length)] ?? COLORS.ACCENT_CYAN;
-      const x = randomRange(0, GAME.WIDTH);
-      const y = randomRange(0, GAME.HEIGHT);
+      // Position within the *current* viewport so shapes fill the whole
+      // screen regardless of aspect ratio.
+      const x = randomRange(0, this.viewW);
+      const y = randomRange(0, this.viewH);
 
       const g = this.scene.add.graphics();
       g.setDepth(-1);
       g.setPosition(x, y);
       g.setBlendMode(Phaser.BlendModes.ADD);
-
       g.lineStyle(1, color, 0.03);
       this.drawShape(g, kind, size);
 
-      // Slow position drift
       const driftTween = this.scene.tweens.add({
         targets: g,
         x: x + randomRange(-100, 100),
@@ -87,7 +115,6 @@ export class BackgroundRenderer {
         ease: 'Sine.easeInOut',
       });
 
-      // Slow rotation
       const rotTween = this.scene.tweens.add({
         targets: g,
         rotation: Math.PI * 2,
@@ -96,11 +123,9 @@ export class BackgroundRenderer {
         ease: 'Linear',
       });
 
-      this.tweens.push(driftTween, rotTween);
-      shapes.push(g);
+      this.allTweens.push(driftTween, rotTween);
+      this.shapes.push({ gfx: g, kind, size, color, driftTweens: [driftTween, rotTween] });
     }
-
-    return shapes;
   }
 
   private drawShape(g: Phaser.GameObjects.Graphics, kind: ShapeKind, size: number): void {
@@ -129,7 +154,6 @@ export class BackgroundRenderer {
         Math.sin(angle) * radius,
       ));
     }
-
     g.beginPath();
     const first = points[0];
     if (first) g.moveTo(first.x, first.y);
@@ -141,42 +165,13 @@ export class BackgroundRenderer {
     g.strokePath();
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Scanline overlay                                                  */
-  /* ------------------------------------------------------------------ */
-
-  private createScanlines(): Phaser.GameObjects.Graphics {
-    const g = this.scene.add.graphics();
-    g.setDepth(-0.5);
-    g.lineStyle(1, 0xffffff, 0.012);
-
-    for (let y = 0; y < GAME.HEIGHT; y += 4) {
-      g.beginPath();
-      g.moveTo(0, y);
-      g.lineTo(GAME.WIDTH, y);
-      g.strokePath();
-    }
-
-    return g;
-  }
-
-  /* ------------------------------------------------------------------ */
-  /*  Cleanup                                                           */
-  /* ------------------------------------------------------------------ */
-
   destroy(): void {
-    for (const tween of this.tweens) {
-      tween.destroy();
-    }
-    this.tweens.length = 0;
-
+    this.scene.scale.off('resize', this.resizeHandler);
+    for (const tween of this.allTweens) tween.destroy();
+    this.allTweens.length = 0;
     this.vignette.destroy();
-
-    for (const shape of this.shapes) {
-      shape.destroy();
-    }
+    for (const s of this.shapes) s.gfx.destroy();
     this.shapes.length = 0;
-
     this.scanlines.destroy();
   }
 }

@@ -29,13 +29,21 @@
       height: 100%;
       height: 100dvh;
       overflow: hidden;
-      background: #08080f;
       color: #e0e0e0;
       font-family: "Segoe UI", system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       touch-action: none;
       overscroll-behavior: none;
+      /*
+       * Subtle radial atmosphere behind the canvas — on phones with
+       * wider aspect ratios than 16:9, Phaser's FIT scale mode
+       * letterboxes the canvas, and these bars show the body bg.
+       * Matching the game's vignette so the bars feel like part of
+       * the atmosphere instead of looking like empty black voids.
+       */
+      background:
+        radial-gradient(ellipse at center, #101020 0%, #08080f 55%, #040408 100%);
     }
     #game-container {
       width: 100%;
@@ -47,8 +55,6 @@
     /* Canvas Phaser injects — keep it centered and responsive. */
     canvas {
       display: block;
-      max-width: 100%;
-      max-height: 100%;
     }
   </style>
 </head>
