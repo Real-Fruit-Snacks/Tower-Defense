@@ -21,6 +21,12 @@ export class CampaignState {
     this.hp = data.campaignProgress.hp;
     this.currentWorldId = data.campaignProgress.currentWorld;
     this.mapSeed = data.campaignProgress.mapSeed;
+    // Restore node progress from the save — otherwise every scene
+    // restart reverts the player to 'start', which made it look like
+    // event/rest clicks weren't advancing the map.
+    this.currentNodeId = data.campaignProgress.currentNodeId ?? 'start';
+    const visited = data.campaignProgress.visitedNodeIds;
+    this.visitedIds = new Set(visited && visited.length > 0 ? visited : ['start']);
   }
 
   /** Start a fresh campaign run — new seed, reset HP, world 1 */
