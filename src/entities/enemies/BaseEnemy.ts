@@ -133,13 +133,19 @@ export class BaseEnemy extends Phaser.GameObjects.Container {
       }
     }
 
-    // Apply knockback (move backward along path)
+    // Apply knockback (move backward along path).
+    // After teleporting to the target waypoint, return early — otherwise
+    // the movement block below would see dist=0 (we're now exactly on
+    // the waypoint) and immediately advance pathIndex++, silently
+    // eating one waypoint of the knockback. A 2-cell knockback was
+    // effectively only pushing back 1 cell before this early-return.
     const knockback = this.statusEffects.consumeKnockback();
     if (knockback > 0) {
-      // Move backward along path
       this.pathIndex = Math.max(0, this.pathIndex - Math.ceil(knockback));
       const wp = this.pathWaypoints[this.pathIndex];
       if (wp) this.setPosition(wp.x, wp.y);
+      this.updateStatusIndicators();
+      return false;
     }
 
     // Don't move if stunned
