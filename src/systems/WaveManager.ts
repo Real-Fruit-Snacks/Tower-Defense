@@ -137,16 +137,22 @@ export class WaveManager {
   }
 
   private completeWave(): void {
-    const wave = this.getWaveAt(this.currentWaveIndex);
-    this.state = 'complete';
+    // IMPORTANT: advance currentWaveIndex and reset state BEFORE emitting
+    // WAVE_END. The GameScene listener checks `isAllWavesComplete()` in
+    // its handler — that check requires `currentWaveIndex >= waves.length
+    // && state === 'idle'`. If we emitted first, the check would always
+    // return false on the real last wave (state still 'complete', index
+    // not yet incremented), so the game would never trigger victory and
+    // would sit idle after the final wave.
+    const completedIndex = this.currentWaveIndex;
+    const wave = this.getWaveAt(completedIndex);
+    this.currentWaveIndex = completedIndex + 1;
+    this.state = 'idle';
 
     this.events.emit('WAVE_END', {
-      waveNumber: this.currentWaveIndex + 1,
+      waveNumber: completedIndex + 1, // 1-based wave number that just ended
       bonusGold: wave?.bonusGold ?? 0,
     });
-
-    this.currentWaveIndex++;
-    this.state = 'idle';
     this.events.emit('GAME_STATE_CHANGED', { state: 'build' });
   }
 
