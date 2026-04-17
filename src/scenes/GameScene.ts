@@ -814,7 +814,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // Cancel any pending auto-start timer explicitly. Phaser auto-cleans
+    // TimerEvents on scene shutdown, but leaning on that means a timer
+    // scheduled seconds earlier could briefly fire against a torn-down
+    // scene if the timing lines up with a restart.
+    this.autoStartTimer?.remove(false);
+    this.autoStartTimer = undefined;
+
+    // Clear all listeners on the shared event bus — GameScene owns this
+    // bus and HudScene + TowerBarScene both read it. Clearing here stops
+    // any in-flight events from reaching torn-down overlay scenes.
     this.gameEvents.removeAll();
+
     this.towerManager.clearAll();
     this.enemyManager.clearAll();
     this.gridRenderer.destroy();
